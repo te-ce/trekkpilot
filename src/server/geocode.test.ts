@@ -22,6 +22,19 @@ describe('buildGeocodeRequest', () => {
     expect(url.searchParams.get('api_key')).toBe('secret-key')
     expect(url.searchParams.get('text')).toBe('Berlin')
   })
+
+  it('targets an overridden ORS host when ORS_BASE_URL is set, so tests can point at a fixture server', () => {
+    vi.stubEnv('ORS_BASE_URL', 'http://127.0.0.1:4319')
+
+    const request = buildGeocodeRequest('Berlin', 'secret-key')
+
+    const url = new URL(request.url)
+    expect(url.origin + url.pathname).toBe(
+      'http://127.0.0.1:4319/geocode/search',
+    )
+
+    vi.unstubAllEnvs()
+  })
 })
 
 describe('fetchGeocode', () => {

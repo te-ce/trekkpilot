@@ -1,4 +1,5 @@
 import { targetDistanceMeters, type ActivityType } from '#/lib/activity'
+import { orsBaseUrl } from '#/server/orsConfig'
 import {
   computeAscentMeters,
   computeConstructionPenalty,
@@ -60,7 +61,7 @@ export function buildRoundTripRequest({
   const profile = ORS_PROFILE[activity]
 
   return {
-    url: `https://api.openrouteservice.org/v2/directions/${profile}/geojson`,
+    url: `${orsBaseUrl()}/v2/directions/${profile}/geojson`,
     body: {
       coordinates: [[start.lon, start.lat]],
       elevation: true,
@@ -124,7 +125,7 @@ export function buildAlternativeRoutesRequest({
   const profile = ORS_PROFILE[activity]
 
   return {
-    url: `https://api.openrouteservice.org/v2/directions/${profile}/geojson`,
+    url: `${orsBaseUrl()}/v2/directions/${profile}/geojson`,
     body: {
       coordinates: [
         [start.lon, start.lat],

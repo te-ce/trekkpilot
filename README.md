@@ -97,6 +97,13 @@ pnpm dev          # http://localhost:3000
 Without a key the app loads and the map renders, but any search fails — the
 server function throws `ORS_API_KEY is not configured on the server`.
 
+`ORS_BASE_URL` optionally overrides where those requests go. It defaults to
+`https://api.openrouteservice.org`, so production needs no setting; it exists so
+a test run can point the app at a fixture ORS server (`e2e/fixtures/`) and drive
+the whole journey without a key, without network access, and without spending
+free-tier quota. Like the API key, it is read server-side only. The Playwright
+suite sets it for you — see _Testing and quality gates_.
+
 The free tier is rate-limited, and each loop search spends **five** directions
 requests (one per seed), plus one geocoding request per location you search by
 name.
@@ -112,6 +119,7 @@ name.
 | `pnpm test:run`        | Vitest once                                 |
 | `pnpm coverage`        | Vitest with coverage                        |
 | `pnpm e2e`             | Playwright against a preview build          |
+| `pnpm e2e:smoke`       | The `@smoke`-tagged Playwright subset       |
 | `pnpm typecheck`       | `tsc -b`                                    |
 | `pnpm lint`            | oxlint, type-aware                          |
 | `pnpm lint:fix`        | oxlint with `--fix`                         |
@@ -124,10 +132,22 @@ Add route files under `src/routes` — TanStack Router regenerates
 
 ## Testing and quality gates
 
-The suite is unit and integration tests in Vitest with Testing Library, plus one
-Playwright test that runs against a real production preview build. ORS is
-mocked at the `fetch` boundary; scoring, ranking, GPX and history are covered as
-pure functions.
+The suite is unit and integration tests in Vitest with Testing Library, plus a
+Playwright suite that runs against a real production preview build. In Vitest,
+ORS is mocked at the `fetch` boundary; scoring, ranking, GPX and history are
+covered as pure functions.
+
+End to end, ORS is stood in for by a local fixture server (`e2e/fixtures/`), a
+dependency-free `node:http` server started for the run in `e2e/global-setup.ts`
+and reached because `playwright.config.ts` sets `ORS_BASE_URL` (and a dummy
+`ORS_API_KEY`) for the preview server. The fixtures reproduce real ORS GeoJSON
+field for field — `[lon, lat, elevation]` coordinate triples, `summary`,
+`segments[].steps[]`, and `extras.waytype.summary[]` with ORS's numeric waytype
+codes — and the five loop candidates differ enough in ascent, turns and waytype
+mix that the top-three cut and the ranking control both have real work to do. So
+`pnpm e2e` covers searching, re-ranking, selecting, GPX export, the Google Maps
+link, history and the point-to-point flow with no key, no network and no quota
+spent. `pnpm e2e:smoke` runs the `@smoke`-tagged subset.
 
 A husky pre-commit hook runs lint-staged, `tsc -b` and the full Vitest suite, so
 a commit can't land red. CI additionally runs coverage, `knip`, and the
@@ -135,13 +155,17 @@ Playwright job.
 
 ## Known limitations
 
-- **The ORS integration hasn't been exercised against a live key.** Three
-  assumptions are documented in code and still need confirming against real
-  responses: the numeric `waytype` codes used for the path-type ratio and the
-  construction penalty (the API exposes no dedicated `construction=*` bucket, so
-  one is reused for both), the `api_key` query parameter on `/geocode/search`,
-  and the `share_factor`/`weight_factor` values for `alternative_routes`.
-  Missing data degrades a signal rather than crashing a search.
+- **Some ORS response details are believed, not verified.** Searching works
+  against a live key, but a few specifics have only ever been exercised against
+  our own fixtures, which were written to match what the code reads — so they
+  encode the current belief rather than proving it: the numeric `waytype` codes
+  behind the path-type ratio and the construction penalty (the API exposes no
+  dedicated `construction=*` bucket, so one code is reused for both), the
+  response carrying `properties.extras` rather than `extra_info`, the `api_key`
+  query parameter on `/geocode/search`, and the `share_factor`/`weight_factor`
+  values for `alternative_routes`. Missing or misread data degrades one scoring
+  signal rather than crashing a search, which is why a wrong guess here shows up
+  as a metric that is always 0% rather than as an error.
 - **Net elevation change is near zero for loops** by definition — it's most
   useful in point-to-point mode.
 - **Point-to-point ignores the time budget.** It ranks three ways to a

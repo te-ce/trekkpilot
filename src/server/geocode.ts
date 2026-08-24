@@ -7,6 +7,8 @@
  * simple: one request per explicit "search" action, not live autocomplete.
  */
 
+import { orsBaseUrl } from '#/server/orsConfig'
+
 export type GeocodeRequest = { url: string }
 
 /**
@@ -19,7 +21,7 @@ export function buildGeocodeRequest(
   query: string,
   apiKey: string,
 ): GeocodeRequest {
-  const url = new URL('https://api.openrouteservice.org/geocode/search')
+  const url = new URL(`${orsBaseUrl()}/geocode/search`)
   url.searchParams.set('api_key', apiKey)
   url.searchParams.set('text', query)
   url.searchParams.set('size', '1')

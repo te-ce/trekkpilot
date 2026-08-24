@@ -85,6 +85,22 @@ describe('buildRoundTripRequest', () => {
     })
   })
 
+  it('targets an overridden ORS host when ORS_BASE_URL is set, so tests can point at a fixture server', () => {
+    vi.stubEnv('ORS_BASE_URL', 'http://127.0.0.1:4319')
+
+    const request = buildRoundTripRequest({
+      activity: 'cycling',
+      start: { lat: 52.52, lon: 13.405 },
+      distanceMeters: 15_000,
+    })
+
+    expect(request.url).toBe(
+      'http://127.0.0.1:4319/v2/directions/cycling-regular/geojson',
+    )
+
+    vi.unstubAllEnvs()
+  })
+
   it('builds a trekking round_trip request using the foot-walking profile', () => {
     const request = buildRoundTripRequest({
       activity: 'trekking',
@@ -311,6 +327,22 @@ describe('buildAlternativeRoutesRequest', () => {
         weight_factor: 1.4,
       },
     })
+  })
+
+  it('targets an overridden ORS host when ORS_BASE_URL is set, so tests can point at a fixture server', () => {
+    vi.stubEnv('ORS_BASE_URL', 'http://127.0.0.1:4319')
+
+    const request = buildAlternativeRoutesRequest({
+      activity: 'cycling',
+      start: { lat: 52.52, lon: 13.405 },
+      stop: { lat: 52.53, lon: 13.42 },
+    })
+
+    expect(request.url).toBe(
+      'http://127.0.0.1:4319/v2/directions/cycling-regular/geojson',
+    )
+
+    vi.unstubAllEnvs()
   })
 
   it('builds a trekking directions request using the foot-walking profile', () => {
