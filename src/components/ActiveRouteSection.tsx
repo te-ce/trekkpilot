@@ -37,11 +37,20 @@ export function ActiveRouteSection({
   return (
     <section aria-label="Active route" data-testid="active-route">
       <h2>Active route: {activeRoute.label}</h2>
-      <RouteMap
-        start={[activeRoute.start.lat, activeRoute.start.lon]}
-        coordinates={activeRoute.candidate.coordinates}
-        {...livePositionProp(livePosition)}
-      />
+      <div className="h-[400px] w-full">
+        <RouteMap
+          start={[activeRoute.start.lat, activeRoute.start.lon]}
+          routes={[
+            {
+              id: 'active-route',
+              coordinates: activeRoute.candidate.coordinates,
+              color: '#0B6E4F',
+              isActive: true,
+            },
+          ]}
+          {...livePositionProp(livePosition)}
+        />
+      </div>
       <p>
         <strong>Exact route (GPX):</strong> reproduces the scored route exactly.{' '}
         <strong>Approximate (Google Maps):</strong> Google Maps recalculates

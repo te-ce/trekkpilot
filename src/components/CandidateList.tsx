@@ -53,10 +53,19 @@ export function CandidateList({
         {candidates.map((candidate, index) => (
           <li key={index}>
             <h3>Candidate {index + 1}</h3>
-            <RouteMap
-              start={[start.lat, start.lon]}
-              coordinates={candidate.coordinates}
-            />
+            <div className="h-[400px] w-full">
+              <RouteMap
+                start={[start.lat, start.lon]}
+                routes={[
+                  {
+                    id: `candidate-${index}`,
+                    coordinates: candidate.coordinates,
+                    color: '#0B6E4F',
+                    isActive: true,
+                  },
+                ]}
+              />
+            </div>
             <dl>
               <dt>Score</dt>
               <dd>{candidate.score.toFixed(1)}</dd>

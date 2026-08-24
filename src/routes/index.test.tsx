@@ -10,13 +10,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 vi.mock('#/components/RouteMap', () => ({
   RouteMap: (props: {
     start: [number, number]
-    coordinates: [number, number][]
+    routes: { coordinates: [number, number][] }[]
     livePosition?: [number, number]
   }) => (
     <div
       data-testid="route-map"
       data-start={JSON.stringify(props.start)}
-      data-coordinates={JSON.stringify(props.coordinates)}
+      data-coordinates={JSON.stringify(props.routes[0]?.coordinates)}
       data-live-position={JSON.stringify(props.livePosition ?? null)}
     />
   ),
