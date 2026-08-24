@@ -44,6 +44,8 @@ vi.mock('#/lib/gpx', () => ({
 }))
 
 import { buildGoogleMapsUrl } from '#/lib/googleMaps'
+import { getRouteHistory } from '#/lib/routeHistory'
+import type { LoopRouteCandidate } from '#/server/ors'
 
 import { Home } from './index'
 
@@ -53,6 +55,7 @@ describe('Home', () => {
     getPointToPointRouteMock.mockReset()
     geocodeLocationMock.mockReset()
     downloadGpxMock.mockReset()
+    localStorage.clear()
     // Restore the harmless default stub from test-setup.ts so tests that
     // don't care about geolocation (but may still activate live tracking by
     // selecting a route) aren't left with a previous test's mock.
@@ -131,7 +134,7 @@ describe('Home', () => {
     )
   })
 
-  const sampleCandidates = [
+  const sampleCandidates: LoopRouteCandidate[] = [
     {
       coordinates: [
         [52.52, 13.405],
@@ -336,6 +339,96 @@ describe('Home', () => {
       buildGoogleMapsUrl(
         sampleCandidates[1]!.coordinates as [number, number][],
       ),
+    )
+  })
+
+  it('saves a record of the route to localStorage when the user selects it', async () => {
+    getLoopRouteMock.mockResolvedValue(sampleCandidates)
+
+    render(<Home />)
+    await fetchCandidates()
+
+    fireEvent.click(
+      screen.getAllByRole('button', { name: /use this route/i })[1]!,
+    )
+
+    const history = getRouteHistory()
+    expect(history).toHaveLength(1)
+    expect(history[0]).toMatchObject({
+      activity: 'cycling',
+      durationMinutes: 60,
+      start: { lat: 52.52, lon: 13.405 },
+      candidate: sampleCandidates[1],
+    })
+  })
+
+  it('lists saved routes in a history view with activity, duration, date, and score', async () => {
+    const { saveRouteToHistory } = await import('#/lib/routeHistory')
+    saveRouteToHistory({
+      activity: 'trekking',
+      durationMinutes: 90,
+      start: { lat: 52.52, lon: 13.405 },
+      candidate: sampleCandidates[0]!,
+    })
+
+    render(<Home />)
+    fireEvent.click(screen.getByRole('button', { name: /history/i }))
+
+    const historySection = screen.getByRole('region', { name: /history/i })
+    expect(within(historySection).getByText(/trekking/i)).toBeInTheDocument()
+    expect(within(historySection).getByText(/90/)).toBeInTheDocument()
+    expect(within(historySection).getByText('24.0')).toBeInTheDocument()
+  })
+
+  it('lets the user reopen a saved history entry to view it as the active route', async () => {
+    const { saveRouteToHistory } = await import('#/lib/routeHistory')
+    saveRouteToHistory({
+      activity: 'trekking',
+      durationMinutes: 90,
+      start: { lat: 52.52, lon: 13.405 },
+      candidate: sampleCandidates[2]!,
+    })
+
+    render(<Home />)
+    fireEvent.click(screen.getByRole('button', { name: /history/i }))
+
+    const historySection = screen.getByRole('region', { name: /history/i })
+    fireEvent.click(
+      within(historySection).getByRole('button', { name: /view/i }),
+    )
+
+    const activeSection = screen.getByTestId('active-route')
+    const activeMap = within(activeSection).getByTestId('route-map')
+    expect(
+      JSON.parse(activeMap.getAttribute('data-coordinates') ?? '[]'),
+    ).toEqual(sampleCandidates[2]?.coordinates)
+  })
+
+  it('lets the user re-export a reopened history entry as GPX', async () => {
+    const { saveRouteToHistory } = await import('#/lib/routeHistory')
+    saveRouteToHistory({
+      activity: 'trekking',
+      durationMinutes: 90,
+      start: { lat: 52.52, lon: 13.405 },
+      candidate: sampleCandidates[2]!,
+    })
+
+    render(<Home />)
+    fireEvent.click(screen.getByRole('button', { name: /history/i }))
+
+    const historySection = screen.getByRole('region', { name: /history/i })
+    fireEvent.click(
+      within(historySection).getByRole('button', { name: /view/i }),
+    )
+
+    const activeSection = screen.getByTestId('active-route')
+    fireEvent.click(
+      within(activeSection).getByRole('button', { name: /export gpx/i }),
+    )
+
+    expect(downloadGpxMock).toHaveBeenCalledWith(
+      { coordinates: sampleCandidates[2]?.coordinates },
+      expect.stringMatching(/\.gpx$/),
     )
   })
 
