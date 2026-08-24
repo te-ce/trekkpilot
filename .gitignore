@@ -1,0 +1,30 @@
+# Logs
+*.log
+pnpm-debug.log*
+
+node_modules
+
+# Build output
+dist/
+.output/
+.tanstack/
+.vinxi/
+
+# Test output
+coverage/
+playwright-report/
+test-results/
+
+# Env
+.env
+.env.local
+*.local
+
+# macOS
+.DS_Store
+
+# Editor
+.idea
+
+# TypeScript build cache
+*.tsbuildinfo
