@@ -1,15 +1,27 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useState } from 'react'
 
+import { LocationPicker, type GeoPoint } from '#/components/LocationPicker'
 import { RouteMap } from '#/components/RouteMap'
 import { isActivityType, type ActivityType } from '#/lib/activity'
 import { getLoopRoute } from '#/server/functions/getLoopRoute'
+import { getPointToPointRoute } from '#/server/functions/getPointToPointRoute'
 import type { LoopRouteCandidate } from '#/server/ors'
 import type { CandidateMetrics, ElevationMetricType } from '#/server/scoring'
 
 export const Route = createFileRoute('/')({ component: Home })
 
-type StartPoint = { lat: number; lon: number }
+/**
+ * 'loop' fetches round-trip loops back to the start (issues 001-003).
+ * 'pointToPoint' routes a single outbound leg between a start and a
+ * different stop point via ORS alternative_routes (issue 004);
+ * return-trip routing is explicitly out of scope.
+ */
+type RouteMode = 'loop' | 'pointToPoint'
+
+function isRouteMode(value: string): value is RouteMode {
+  return value === 'loop' || value === 'pointToPoint'
+}
 
 function formatRatio(ratio: number): string {
   return `${Math.round(ratio * 100)}%`
@@ -44,46 +56,25 @@ function elevationMetricDisplay(
 }
 
 export function Home() {
+  const [mode, setMode] = useState<RouteMode>('loop')
   const [activity, setActivity] = useState<ActivityType>('cycling')
   const [durationMinutes, setDurationMinutes] = useState(60)
   const [elevationMetric, setElevationMetric] =
     useState<ElevationMetricType>('ascent')
-  const [manualLat, setManualLat] = useState('')
-  const [manualLon, setManualLon] = useState('')
-  const [start, setStart] = useState<StartPoint | null>(null)
+  const [start, setStart] = useState<GeoPoint | null>(null)
+  const [stop, setStop] = useState<GeoPoint | null>(null)
   const [candidates, setCandidates] = useState<LoopRouteCandidate[]>([])
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
 
-  function useCurrentLocation() {
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        setStart({
-          lat: position.coords.latitude,
-          lon: position.coords.longitude,
-        })
-      },
-      () => {
-        setError('Could not read the current GPS location.')
-      },
-    )
-  }
-
-  function setPinManually() {
-    const lat = Number(manualLat)
-    const lon = Number(manualLon)
-    if (Number.isNaN(lat) || Number.isNaN(lon)) {
-      setError('Latitude and longitude must be numbers.')
-      return
-    }
-    setStart({ lat, lon })
-    setError(null)
-  }
-
   async function handleGetRoute() {
     if (!start) {
-      setError('Pick a start point first (GPS or manual pin).')
+      setError('Pick a start point first (GPS, search, or manual pin).')
+      return
+    }
+    if (mode === 'pointToPoint' && !stop) {
+      setError('Pick a stop point first (search or manual pin).')
       return
     }
 
@@ -91,9 +82,14 @@ export function Home() {
     setError(null)
     setSelectedIndex(null)
     try {
-      const result = await getLoopRoute({
-        data: { activity, start, durationMinutes, elevationMetric },
-      })
+      const result =
+        mode === 'pointToPoint' && stop
+          ? await getPointToPointRoute({
+              data: { activity, start, stop, elevationMetric },
+            })
+          : await getLoopRoute({
+              data: { activity, start, durationMinutes, elevationMetric },
+            })
       setCandidates(result)
     } catch {
       setError('Could not fetch a route. Please try again.')
@@ -113,6 +109,20 @@ export function Home() {
           void handleGetRoute()
         }}
       >
+        <label htmlFor="mode">Mode</label>
+        <select
+          id="mode"
+          value={mode}
+          onChange={(event) => {
+            if (isRouteMode(event.target.value)) {
+              setMode(event.target.value)
+            }
+          }}
+        >
+          <option value="loop">Loop (back to start)</option>
+          <option value="pointToPoint">Point-to-point</option>
+        </select>
+
         <label htmlFor="activity">Activity</label>
         <select
           id="activity"
@@ -127,13 +137,19 @@ export function Home() {
           <option value="trekking">Trekking</option>
         </select>
 
-        <label htmlFor="duration">Target duration (minutes)</label>
-        <input
-          id="duration"
-          type="number"
-          value={durationMinutes}
-          onChange={(event) => setDurationMinutes(Number(event.target.value))}
-        />
+        {mode === 'loop' && (
+          <>
+            <label htmlFor="duration">Target duration (minutes)</label>
+            <input
+              id="duration"
+              type="number"
+              value={durationMinutes}
+              onChange={(event) =>
+                setDurationMinutes(Number(event.target.value))
+              }
+            />
+          </>
+        )}
 
         <label htmlFor="elevation-metric">Elevation metric</label>
         <select
@@ -150,38 +166,24 @@ export function Home() {
           <option value="maxGradient">Max gradient</option>
         </select>
 
-        <fieldset>
-          <legend>Start point</legend>
-          <button type="button" onClick={useCurrentLocation}>
-            Use current location
-          </button>
+        <LocationPicker
+          legend="Start point"
+          idPrefix="start"
+          value={start}
+          onChange={setStart}
+          onError={setError}
+          showCurrentLocation
+        />
 
-          <label htmlFor="manual-lat">Latitude</label>
-          <input
-            id="manual-lat"
-            type="number"
-            value={manualLat}
-            onChange={(event) => setManualLat(event.target.value)}
+        {mode === 'pointToPoint' && (
+          <LocationPicker
+            legend="Stop point"
+            idPrefix="stop"
+            value={stop}
+            onChange={setStop}
+            onError={setError}
           />
-
-          <label htmlFor="manual-lon">Longitude</label>
-          <input
-            id="manual-lon"
-            type="number"
-            value={manualLon}
-            onChange={(event) => setManualLon(event.target.value)}
-          />
-
-          <button type="button" onClick={setPinManually}>
-            Set pin manually
-          </button>
-
-          {start && (
-            <p>
-              Start point: {start.lat}, {start.lon}
-            </p>
-          )}
-        </fieldset>
+        )}
 
         <button type="submit" disabled={isLoading}>
           {isLoading ? 'Finding route…' : 'Get route'}

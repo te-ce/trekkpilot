@@ -1,9 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
+  buildAlternativeRoutesRequest,
   buildRoundTripRequest,
   fetchLoopRoute,
   fetchLoopRouteCandidates,
+  fetchPointToPointRouteCandidates,
 } from './ors'
 
 function orsFeature({
@@ -255,6 +257,169 @@ describe('fetchLoopRouteCandidates', () => {
     expect(scores).toEqual([...scores].sort((a, b) => b - a))
     // Best candidate corresponds to the response with the fewest turn steps.
     expect(candidates[0]?.metrics.turnCount).toBe(1)
+  })
+})
+
+function orsAlternativesResponse({
+  count = 2,
+}: {
+  count?: number
+} = {}) {
+  const stepsByIndex = [[{}, {}], [{}, {}, {}, {}], [{}]]
+  return {
+    features: Array.from({ length: count }, (_, index) => ({
+      geometry: {
+        coordinates: [
+          [13.405, 52.52, 30],
+          [13.41, 52.525, 40],
+        ],
+      },
+      properties: {
+        summary: { distance: 5_000 + index * 100, duration: 1_200 },
+        segments: [{ steps: stepsByIndex[index] ?? [{}] }],
+        extras: {
+          waytype: {
+            summary: [{ value: 6, distance: 4_000, amount: 80 }],
+          },
+        },
+      },
+    })),
+  }
+}
+
+describe('buildAlternativeRoutesRequest', () => {
+  it('builds a cycling directions request between two points requesting alternative routes', () => {
+    const request = buildAlternativeRoutesRequest({
+      activity: 'cycling',
+      start: { lat: 52.52, lon: 13.405 },
+      stop: { lat: 52.53, lon: 13.42 },
+    })
+
+    expect(request.url).toBe(
+      'https://api.openrouteservice.org/v2/directions/cycling-regular/geojson',
+    )
+    expect(request.body).toEqual({
+      coordinates: [
+        [13.405, 52.52],
+        [13.42, 52.53],
+      ],
+      elevation: true,
+      extra_info: ['waytype'],
+      alternative_routes: {
+        target_count: 3,
+        share_factor: 0.6,
+        weight_factor: 1.4,
+      },
+    })
+  })
+
+  it('builds a trekking directions request using the foot-walking profile', () => {
+    const request = buildAlternativeRoutesRequest({
+      activity: 'trekking',
+      start: { lat: 48.2, lon: 16.37 },
+      stop: { lat: 48.21, lon: 16.38 },
+    })
+
+    expect(request.url).toBe(
+      'https://api.openrouteservice.org/v2/directions/foot-walking/geojson',
+    )
+  })
+})
+
+describe('fetchPointToPointRouteCandidates', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.unstubAllEnvs()
+  })
+
+  it('requests alternative routes from ORS between the two points in a single call', async () => {
+    vi.stubEnv('ORS_API_KEY', 'secret-key')
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(orsAlternativesResponse()),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await fetchPointToPointRouteCandidates({
+      activity: 'cycling',
+      start: { lat: 52.52, lon: 13.405 },
+      stop: { lat: 52.53, lon: 13.42 },
+    })
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [, init] = fetchMock.mock.calls[0] ?? []
+    const body = JSON.parse(init.body)
+    expect(body.coordinates).toEqual([
+      [13.405, 52.52],
+      [13.42, 52.53],
+    ])
+    expect(body.alternative_routes.target_count).toBe(3)
+  })
+
+  it('scores each alternative using the same weighted-sum formula as loop candidates', async () => {
+    vi.stubEnv('ORS_API_KEY', 'secret-key')
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve(orsAlternativesResponse({ count: 2 })),
+      }),
+    )
+
+    const candidates = await fetchPointToPointRouteCandidates({
+      activity: 'cycling',
+      start: { lat: 52.52, lon: 13.405 },
+      stop: { lat: 52.53, lon: 13.42 },
+    })
+
+    expect(candidates).toHaveLength(2)
+    const top = candidates[0]
+    expect(top).toBeDefined()
+    // fewest turn steps (2) wins over the other alternative (4 steps).
+    expect(top?.metrics.turnCount).toBe(2)
+    expect(top?.metrics.ascentMeters).toBe(10)
+    expect(top?.metrics.pathTypeRatio).toBe(0.8)
+    expect(top?.score).toBeCloseTo(10 * -0.05 + 2 * -0.5 + 0.8 * 50)
+  })
+
+  it('returns at most the top 3 alternatives, sorted best score first', async () => {
+    vi.stubEnv('ORS_API_KEY', 'secret-key')
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve(orsAlternativesResponse({ count: 3 })),
+      }),
+    )
+
+    const candidates = await fetchPointToPointRouteCandidates({
+      activity: 'cycling',
+      start: { lat: 52.52, lon: 13.405 },
+      stop: { lat: 52.53, lon: 13.42 },
+    })
+
+    expect(candidates.length).toBeLessThanOrEqual(3)
+    const scores = candidates.map((candidate) => candidate.score)
+    expect(scores).toEqual([...scores].sort((a, b) => b - a))
+  })
+
+  it('throws when ORS response has no route features', async () => {
+    vi.stubEnv('ORS_API_KEY', 'secret-key')
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ features: [] }),
+      }),
+    )
+
+    await expect(
+      fetchPointToPointRouteCandidates({
+        activity: 'cycling',
+        start: { lat: 52.52, lon: 13.405 },
+        stop: { lat: 52.53, lon: 13.42 },
+      }),
+    ).rejects.toThrow(/route feature/)
   })
 })
 

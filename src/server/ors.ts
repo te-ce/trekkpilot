@@ -76,6 +76,71 @@ export function buildRoundTripRequest({
   }
 }
 
+export type AlternativeRoutesRequestInput = {
+  activity: ActivityType
+  start: GeoPoint
+  stop: GeoPoint
+}
+
+export type AlternativeRoutesRequest = {
+  url: string
+  body: {
+    coordinates: [number, number][]
+    elevation: true
+    extra_info: ['waytype']
+    /**
+     * Requests ORS's alternative-routes feature between two fixed points
+     * (point-to-point mode, issue 004), as opposed to `round_trip`'s
+     * endpoint-discovery loops. `target_count` caps how many alternatives ORS
+     * tries to generate; up to that many scored candidates come back from
+     * fetchPointToPointRouteCandidates below.
+     *
+     * ASSUMPTION: `share_factor`/`weight_factor` values are ORS's documented
+     * defaults for meaningfully distinct alternatives, not verified against a
+     * live response — revisit if ORS rejects the request or the alternatives
+     * look degenerate.
+     */
+    alternative_routes: {
+      target_count: number
+      share_factor: number
+      weight_factor: number
+    }
+  }
+}
+
+const ALTERNATIVE_ROUTES_TARGET_COUNT = 3
+
+/**
+ * Builds a directions request between two fixed points asking ORS for
+ * alternative routes (point-to-point mode, issue 004). Unlike round_trip,
+ * this targets a specific destination rather than discovering an endpoint,
+ * so only a single ORS call is needed instead of several seeded calls.
+ */
+export function buildAlternativeRoutesRequest({
+  activity,
+  start,
+  stop,
+}: AlternativeRoutesRequestInput): AlternativeRoutesRequest {
+  const profile = ORS_PROFILE[activity]
+
+  return {
+    url: `https://api.openrouteservice.org/v2/directions/${profile}/geojson`,
+    body: {
+      coordinates: [
+        [start.lon, start.lat],
+        [stop.lon, stop.lat],
+      ],
+      elevation: true,
+      extra_info: ['waytype'],
+      alternative_routes: {
+        target_count: ALTERNATIVE_ROUTES_TARGET_COUNT,
+        share_factor: 0.6,
+        weight_factor: 1.4,
+      },
+    },
+  }
+}
+
 export type LoopRouteInput = {
   activity: ActivityType
   start: GeoPoint
@@ -100,12 +165,13 @@ function requireApiKey(): string {
 }
 
 /**
- * POSTs a round_trip request to ORS and parses the JSON response as `T`.
- * `response.json()` is typed `Promise<any>` by lib.dom, so the generic
- * return type is satisfied without needing an `as` assertion at call sites.
+ * POSTs a request (round_trip or alternative_routes) to ORS and parses the
+ * JSON response as `T`. `response.json()` is typed `Promise<any>` by
+ * lib.dom, so the generic return type is satisfied without needing an `as`
+ * assertion at call sites.
  */
 async function postOrsRequest<T>(
-  { url, body }: OrsRequest,
+  { url, body }: { url: string; body: unknown },
   apiKey: string,
 ): Promise<T> {
   const response = await fetch(url, {
@@ -203,6 +269,30 @@ function metricsFromFeature(feature: OrsFeature): CandidateMetrics {
 }
 
 /**
+ * Turns a single ORS route feature into a scored candidate. Shared by both
+ * the round_trip (loop) and alternative_routes (point-to-point) code paths
+ * below, since both hand back the same GeoJSON feature shape and score it
+ * identically.
+ */
+function featureToCandidate(
+  feature: OrsFeature,
+  elevationMetric: ElevationMetricType,
+): LoopRouteCandidate {
+  const coordinates: [number, number][] = feature.geometry.coordinates.map(
+    ([lon, lat]) => [lat, lon],
+  )
+  const metrics = metricsFromFeature(feature)
+
+  return {
+    coordinates,
+    distanceMeters: feature.properties.summary.distance,
+    durationSeconds: feature.properties.summary.duration,
+    metrics,
+    score: scoreCandidate(metrics, elevationMetric),
+  }
+}
+
+/**
  * Fetches several round-trip loop candidates from ORS for the same start
  * point and target duration (varying `options.round_trip.seed` per call so
  * ORS generates distinct loops), scores each one via the weighted-sum
@@ -234,23 +324,61 @@ export async function fetchLoopRouteCandidates({
         throw new Error('ORS response did not include a route feature')
       }
 
-      const coordinates: [number, number][] = feature.geometry.coordinates.map(
-        ([lon, lat]) => [lat, lon],
-      )
-      const metrics = metricsFromFeature(feature)
-
-      const candidate: LoopRouteCandidate = {
-        coordinates,
-        distanceMeters: feature.properties.summary.distance,
-        durationSeconds: feature.properties.summary.duration,
-        metrics,
-        score: scoreCandidate(metrics, elevationMetric),
-      }
-      return candidate
+      return featureToCandidate(feature, elevationMetric)
     }),
   )
 
   return candidates
+    .sort((a, b) => b.score - a.score)
+    .slice(0, TOP_CANDIDATE_COUNT)
+}
+
+export type PointToPointRouteInput = {
+  activity: ActivityType
+  start: GeoPoint
+  stop: GeoPoint
+  /** Which elevation signal drives scoring/display (issue 003). Defaults to 'ascent'. */
+  elevationMetric?: ElevationMetricType
+}
+
+/**
+ * A single scored point-to-point route alternative between a fixed start and
+ * stop point. Shares its shape with LoopRouteCandidate (same coordinates /
+ * metrics / score fields) so the UI can reuse the same candidate-list
+ * rendering for both modes; only the semantics of `coordinates` differ (an
+ * open outbound leg here, vs. a closed loop for round_trip). Return-trip
+ * routing is explicitly out of scope (issue 004) — only the outbound leg
+ * above is fetched/scored.
+ */
+export type PointToPointRouteCandidate = LoopRouteCandidate
+
+/**
+ * Fetches alternative routes from ORS between two fixed points
+ * (point-to-point mode, issue 004), scores each one via the same
+ * weighted-sum formula used for loop candidates, and returns up to the top 3
+ * sorted best-first. Unlike fetchLoopRouteCandidates, this needs only a
+ * single ORS call since `alternative_routes` returns several distinct routes
+ * per request.
+ */
+export async function fetchPointToPointRouteCandidates({
+  activity,
+  start,
+  stop,
+  elevationMetric = 'ascent',
+}: PointToPointRouteInput): Promise<PointToPointRouteCandidate[]> {
+  const apiKey = requireApiKey()
+  const request = buildAlternativeRoutesRequest({ activity, start, stop })
+
+  const geojson = await postOrsRequest<{ features: OrsFeature[] }>(
+    request,
+    apiKey,
+  )
+  if (geojson.features.length === 0) {
+    throw new Error('ORS response did not include a route feature')
+  }
+
+  return geojson.features
+    .map((feature) => featureToCandidate(feature, elevationMetric))
     .sort((a, b) => b.score - a.score)
     .slice(0, TOP_CANDIDATE_COUNT)
 }

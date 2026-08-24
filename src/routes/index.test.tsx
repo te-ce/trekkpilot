@@ -25,11 +25,24 @@ vi.mock('#/server/functions/getLoopRoute', () => ({
   getLoopRoute: (...args: unknown[]) => getLoopRouteMock(...args),
 }))
 
+const getPointToPointRouteMock = vi.fn()
+vi.mock('#/server/functions/getPointToPointRoute', () => ({
+  getPointToPointRoute: (...args: unknown[]) =>
+    getPointToPointRouteMock(...args),
+}))
+
+const geocodeLocationMock = vi.fn()
+vi.mock('#/server/functions/geocodeLocation', () => ({
+  geocodeLocation: (...args: unknown[]) => geocodeLocationMock(...args),
+}))
+
 import { Home } from './index'
 
 describe('Home', () => {
   afterEach(() => {
     getLoopRouteMock.mockReset()
+    getPointToPointRouteMock.mockReset()
+    geocodeLocationMock.mockReset()
     Object.defineProperty(globalThis.navigator, 'geolocation', {
       value: undefined,
       configurable: true,
@@ -255,5 +268,162 @@ describe('Home', () => {
     expect(
       JSON.parse(activeMap.getAttribute('data-coordinates') ?? '[]'),
     ).toEqual(sampleCandidates[1]?.coordinates)
+  })
+
+  it('defaults to loop mode with the duration field visible and no stop point section', () => {
+    render(<Home />)
+
+    expect(screen.getByLabelText(/mode/i)).toHaveValue('loop')
+    expect(screen.getByLabelText(/duration/i)).toBeInTheDocument()
+    expect(screen.queryByRole('group', { name: /stop point/i })).toBeNull()
+  })
+
+  it('switches to point-to-point mode, hiding duration and showing a stop point section', () => {
+    render(<Home />)
+
+    fireEvent.change(screen.getByLabelText(/mode/i), {
+      target: { value: 'pointToPoint' },
+    })
+
+    expect(screen.queryByLabelText(/duration/i)).toBeNull()
+    expect(
+      screen.getByRole('group', { name: /stop point/i }),
+    ).toBeInTheDocument()
+  })
+
+  it('lets the user set a stop point manually via lat/lon in point-to-point mode', () => {
+    render(<Home />)
+    fireEvent.change(screen.getByLabelText(/mode/i), {
+      target: { value: 'pointToPoint' },
+    })
+
+    const stopSection = screen.getByRole('group', { name: /stop point/i })
+    fireEvent.change(within(stopSection).getByLabelText(/latitude/i), {
+      target: { value: '52.53' },
+    })
+    fireEvent.change(within(stopSection).getByLabelText(/longitude/i), {
+      target: { value: '13.42' },
+    })
+    fireEvent.click(
+      within(stopSection).getByRole('button', { name: /set pin manually/i }),
+    )
+
+    expect(screen.getByText(/52\.53.*13\.42/)).toBeInTheDocument()
+  })
+
+  it('lets the user search for a start location by name', async () => {
+    geocodeLocationMock.mockResolvedValue({
+      lat: 52.52,
+      lon: 13.405,
+      label: 'Berlin, Germany',
+    })
+    render(<Home />)
+
+    const startSection = screen.getByRole('group', { name: /start point/i })
+    fireEvent.change(within(startSection).getByLabelText(/search location/i), {
+      target: { value: 'Berlin' },
+    })
+    fireEvent.click(
+      within(startSection).getByRole('button', { name: /search/i }),
+    )
+
+    expect(geocodeLocationMock).toHaveBeenCalledWith({
+      data: { query: 'Berlin' },
+    })
+    await waitFor(() =>
+      expect(screen.getByText(/52\.52.*13\.405/)).toBeInTheDocument(),
+    )
+  })
+
+  it('lets the user search for a stop location by name in point-to-point mode', async () => {
+    geocodeLocationMock.mockResolvedValue({
+      lat: 52.53,
+      lon: 13.42,
+      label: 'Berlin Hauptbahnhof',
+    })
+    render(<Home />)
+    fireEvent.change(screen.getByLabelText(/mode/i), {
+      target: { value: 'pointToPoint' },
+    })
+
+    const stopSection = screen.getByRole('group', { name: /stop point/i })
+    fireEvent.change(within(stopSection).getByLabelText(/search location/i), {
+      target: { value: 'Berlin Hauptbahnhof' },
+    })
+    fireEvent.click(
+      within(stopSection).getByRole('button', { name: /search/i }),
+    )
+
+    expect(geocodeLocationMock).toHaveBeenCalledWith({
+      data: { query: 'Berlin Hauptbahnhof' },
+    })
+    await waitFor(() =>
+      expect(screen.getByText(/52\.53.*13\.42/)).toBeInTheDocument(),
+    )
+  })
+
+  async function fetchPointToPointCandidates() {
+    const startSection = screen.getByRole('group', { name: /start point/i })
+    fireEvent.change(within(startSection).getByLabelText(/latitude/i), {
+      target: { value: '52.52' },
+    })
+    fireEvent.change(within(startSection).getByLabelText(/longitude/i), {
+      target: { value: '13.405' },
+    })
+    fireEvent.click(
+      within(startSection).getByRole('button', { name: /set pin manually/i }),
+    )
+
+    const stopSection = screen.getByRole('group', { name: /stop point/i })
+    fireEvent.change(within(stopSection).getByLabelText(/latitude/i), {
+      target: { value: '52.53' },
+    })
+    fireEvent.change(within(stopSection).getByLabelText(/longitude/i), {
+      target: { value: '13.42' },
+    })
+    fireEvent.click(
+      within(stopSection).getByRole('button', { name: /set pin manually/i }),
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /get route/i }))
+
+    await waitFor(() =>
+      expect(screen.getAllByTestId('route-map').length).toBeGreaterThan(0),
+    )
+  }
+
+  it('requests point-to-point route candidates from the server function in point-to-point mode', async () => {
+    getPointToPointRouteMock.mockResolvedValue(sampleCandidates)
+    render(<Home />)
+    fireEvent.change(screen.getByLabelText(/mode/i), {
+      target: { value: 'pointToPoint' },
+    })
+
+    await fetchPointToPointCandidates()
+
+    expect(getPointToPointRouteMock).toHaveBeenCalledWith({
+      data: {
+        activity: 'cycling',
+        start: { lat: 52.52, lon: 13.405 },
+        stop: { lat: 52.53, lon: 13.42 },
+        elevationMetric: 'ascent',
+      },
+    })
+    expect(getLoopRouteMock).not.toHaveBeenCalled()
+  })
+
+  it('displays point-to-point candidates the same way as loop candidates', async () => {
+    getPointToPointRouteMock.mockResolvedValue(sampleCandidates)
+    render(<Home />)
+    fireEvent.change(screen.getByLabelText(/mode/i), {
+      target: { value: 'pointToPoint' },
+    })
+
+    await fetchPointToPointCandidates()
+
+    expect(screen.getAllByTestId('route-map')).toHaveLength(3)
+    expect(
+      screen.getAllByRole('button', { name: /use this route/i }),
+    ).toHaveLength(3)
   })
 })
