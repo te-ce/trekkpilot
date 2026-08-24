@@ -60,6 +60,29 @@ describe('saveRouteToHistory', () => {
     expect(history[0]?.timestamp).toEqual(expect.any(Number))
   })
 
+  it('records which kind of route was saved, so a point-to-point duration is never shown as a plan', () => {
+    saveRouteToHistory({
+      activity: 'trekking',
+      mode: 'pointToPoint',
+      durationMinutes: 60,
+      start: { lat: 52.52, lon: 13.405 },
+      candidate: sampleCandidate,
+    })
+
+    expect(getRouteHistory()[0]?.mode).toBe('pointToPoint')
+  })
+
+  it('treats an entry saved before modes were recorded as a loop', () => {
+    saveRouteToHistory({
+      activity: 'cycling',
+      durationMinutes: 60,
+      start: { lat: 52.52, lon: 13.405 },
+      candidate: sampleCandidate,
+    })
+
+    expect(getRouteHistory()[0]?.mode).toBe('loop')
+  })
+
   it('keeps only the most recent 30 entries once the cap is exceeded', () => {
     for (let i = 0; i < 35; i++) {
       saveRouteToHistory({

@@ -1,21 +1,31 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useState } from 'react'
 
-import {
-  ActiveRouteSection,
-  type ActiveRoute,
-} from '#/components/ActiveRouteSection'
-import { CandidateList } from '#/components/CandidateList'
-import { HistorySection } from '#/components/HistorySection'
+import { ActivePanel, type ActiveRoute } from '#/components/ActivePanel'
+import { BottomSheet } from '#/components/BottomSheet'
+import { HistoryPanel } from '#/components/HistoryPanel'
+import { LoadingPanel } from '#/components/LoadingPanel'
+import { MapCanvas } from '#/components/MapCanvas'
 import { type GeoPoint } from '#/components/LocationPicker'
-import { RouteForm, type RouteMode } from '#/components/RouteForm'
+import { PlanPanel } from '#/components/PlanPanel'
+import { ResultsPanel } from '#/components/ResultsPanel'
+import type { RoutePolyline } from '#/components/RouteMap'
+import { TopPillBar } from '#/components/TopPillBar'
 import type { ActivityType } from '#/lib/activity'
+import {
+  rankCandidates,
+  ROUTE_COLORS,
+  type RankBy,
+  type RankedCandidate,
+} from '#/lib/ranking'
 import {
   formatHistoryDate,
   getRouteHistory,
   saveRouteToHistory,
   type HistoryEntry,
 } from '#/lib/routeHistory'
+import type { RouteMode } from '#/lib/routeMode'
+import { resolveSheetState, type SheetIntent } from '#/lib/sheetState'
 import { useLiveGeolocation } from '#/lib/useLiveGeolocation'
 import { getLoopRoute } from '#/server/functions/getLoopRoute'
 import { getPointToPointRoute } from '#/server/functions/getPointToPointRoute'
@@ -24,34 +34,80 @@ import type { ElevationMetricType } from '#/server/scoring'
 
 export const Route = createFileRoute('/')({ component: Home })
 
+/** Labels the sheet by what it is currently showing. */
+const SHEET_LABELS = {
+  plan: 'Plan your route',
+  loading: 'Finding routes',
+  results: 'Route options',
+  active: 'Your route',
+  history: 'Saved routes',
+} as const
+
+/** Builds the optional `livePosition` prop, respecting exactOptionalPropertyTypes. */
+function livePositionProp(
+  livePosition: GeoPoint | null,
+): { livePosition: [number, number] } | Record<string, never> {
+  return livePosition
+    ? { livePosition: [livePosition.lat, livePosition.lon] }
+    : {}
+}
+
 /**
- * The route currently shown in the "Active route" section, from whichever
- * source is active: the freshly-fetched candidate list (selectedIndex) or a
- * reopened history entry (activeHistoryEntry). The two are mutually
- * exclusive — selecting a fresh candidate clears the history entry and vice
- * versa (see handleSelectCandidate / handleViewHistoryEntry below).
+ * What the map draws: every fetched candidate at once, each keeping the colour
+ * its position in the fetched set gave it, so a re-rank never swaps colours out
+ * from under the reader. A reopened history entry is a set of one.
+ */
+function buildRoutePolylines(
+  candidates: LoopRouteCandidate[],
+  selectedIndex: number | null,
+  historyEntry: HistoryEntry | null,
+): RoutePolyline[] {
+  if (historyEntry) {
+    return [
+      {
+        id: 'history-route',
+        coordinates: historyEntry.candidate.coordinates,
+        color: ROUTE_COLORS[0] ?? '',
+        isActive: true,
+      },
+    ]
+  }
+  return candidates.map((candidate, index) => ({
+    id: `candidate-${index}`,
+    coordinates: candidate.coordinates,
+    color: ROUTE_COLORS[index % ROUTE_COLORS.length] ?? '',
+    isActive: index === selectedIndex,
+  }))
+}
+
+/**
+ * The route the "active" sheet state is about, from whichever source is live:
+ * a freshly-picked candidate, or a reopened history entry. The two are mutually
+ * exclusive — picking one clears the other.
  */
 function computeActiveRoute(
   candidates: LoopRouteCandidate[],
+  ranked: RankedCandidate[],
   selectedIndex: number | null,
-  start: GeoPoint | null,
-  activeHistoryEntry: HistoryEntry | null,
+  historyEntry: HistoryEntry | null,
 ): ActiveRoute | null {
-  const selectedCandidate =
-    selectedIndex !== null ? candidates[selectedIndex] : undefined
-  if (selectedIndex !== null && start && selectedCandidate) {
+  const candidate =
+    selectedIndex === null ? undefined : candidates[selectedIndex]
+  if (selectedIndex !== null && candidate) {
+    const rank =
+      ranked.findIndex((entry) => entry.originalIndex === selectedIndex) + 1
     return {
-      label: `Candidate ${selectedIndex + 1}`,
-      start,
-      candidate: selectedCandidate,
+      title: `Route #${rank}`,
+      candidate,
+      color: ROUTE_COLORS[selectedIndex % ROUTE_COLORS.length] ?? '',
       exportIndex: selectedIndex + 1,
     }
   }
-  if (activeHistoryEntry) {
+  if (historyEntry) {
     return {
-      label: `History entry from ${formatHistoryDate(activeHistoryEntry.timestamp)}`,
-      start: activeHistoryEntry.start,
-      candidate: activeHistoryEntry.candidate,
+      title: `Saved ${formatHistoryDate(historyEntry.timestamp)}`,
+      candidate: historyEntry.candidate,
+      color: ROUTE_COLORS[0] ?? '',
       exportIndex: 1,
     }
   }
@@ -64,68 +120,94 @@ export function Home() {
   const [durationMinutes, setDurationMinutes] = useState(60)
   const [elevationMetric, setElevationMetric] =
     useState<ElevationMetricType>('ascent')
+  const [rankBy, setRankBy] = useState<RankBy>('balanced')
   const [start, setStart] = useState<GeoPoint | null>(null)
+  const [startLabel, setStartLabel] = useState<string | null>(null)
   const [stop, setStop] = useState<GeoPoint | null>(null)
+  const [stopLabel, setStopLabel] = useState<string | null>(null)
   const [candidates, setCandidates] = useState<LoopRouteCandidate[]>([])
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [isLoading, setIsLoading] = useState(false)
-  const [isHistoryOpen, setIsHistoryOpen] = useState(false)
   const [historyEntries, setHistoryEntries] = useState<HistoryEntry[]>([])
   const [activeHistoryEntry, setActiveHistoryEntry] =
     useState<HistoryEntry | null>(null)
-  const livePosition = useLiveGeolocation(
-    selectedIndex !== null || activeHistoryEntry !== null,
-  )
+  const [error, setError] = useState<string | null>(null)
+  const [isLoading, setIsLoading] = useState(false)
+  const [follow, setFollow] = useState(false)
+  const [intent, setIntent] = useState<SheetIntent>('plan')
 
+  const ranked = rankCandidates(candidates, rankBy, elevationMetric)
   const activeRoute = computeActiveRoute(
     candidates,
+    ranked,
     selectedIndex,
-    start,
     activeHistoryEntry,
   )
+  const livePosition = useLiveGeolocation(activeRoute !== null)
 
-  function toggleHistory() {
-    if (!isHistoryOpen) {
-      setHistoryEntries(getRouteHistory())
-    }
-    setIsHistoryOpen((open) => !open)
+  const sheetState = resolveSheetState({
+    intent,
+    isLoading,
+    hasCandidates: candidates.length > 0,
+    hasActiveRoute: activeRoute !== null,
+  })
+
+  function handleStartChange(point: GeoPoint, label?: string) {
+    setStart(point)
+    setStartLabel(label ?? null)
+  }
+
+  function handleStopChange(point: GeoPoint, label?: string) {
+    setStop(point)
+    setStopLabel(label ?? null)
   }
 
   /**
-   * Saves the picked candidate to device-local route history (issue 008) and
-   * marks it active. Saving on selection (rather than on export) keeps the
-   * trigger simple and single-sourced: export happens after selection in
-   * this flow, so a selected route is already captured before any export.
+   * Saves the picked route to device-local history (issue 008) and makes it the
+   * active one. Saving on selection keeps the trigger single-sourced: an export
+   * only ever happens after a selection.
    */
-  function handleSelectCandidate(index: number) {
-    const candidate = candidates[index]
+  function handleSelectCandidate(originalIndex: number) {
+    const candidate = candidates[originalIndex]
     if (start && candidate) {
-      saveRouteToHistory({ activity, durationMinutes, start, candidate })
+      saveRouteToHistory({ activity, mode, durationMinutes, start, candidate })
     }
     setActiveHistoryEntry(null)
-    setSelectedIndex(index)
+    setSelectedIndex(originalIndex)
+    setIntent('active')
   }
 
-  /** Reopens a saved history entry (issue 008) as the active route. */
-  function handleViewHistoryEntry(entry: HistoryEntry) {
+  function openHistory() {
+    setHistoryEntries(getRouteHistory())
+    setIntent('history')
+  }
+
+  /** Reopens a saved route (issue 008) as the active one. */
+  function viewHistoryEntry(entry: HistoryEntry) {
     setSelectedIndex(null)
     setActiveHistoryEntry(entry)
+    setIntent('active')
   }
 
+  /**
+   * Fetches candidates. The server fetches 5 route options and keeps the top 3
+   * by score, using this same `elevationMetric` for the elevation term; the
+   * client then re-ranks those 3 (see `rankCandidates`) without refetching, so
+   * changing the ranking or the elevation metric afterwards costs nothing.
+   */
   async function handleGetRoute() {
     if (!start) {
-      setError('Pick a start point first (GPS, search, or manual pin).')
+      setError('Pick a start point first — tap the map, or use your location.')
       return
     }
     if (mode === 'pointToPoint' && !stop) {
-      setError('Pick a stop point first (search or manual pin).')
+      setError('Pick where you want to end up first.')
       return
     }
 
     setIsLoading(true)
     setError(null)
     setSelectedIndex(null)
+    setActiveHistoryEntry(null)
     try {
       const result =
         mode === 'pointToPoint' && stop
@@ -136,6 +218,7 @@ export function Home() {
               data: { activity, start, durationMinutes, elevationMetric },
             })
       setCandidates(result)
+      setIntent('results')
     } catch {
       setError('Could not fetch a route. Please try again.')
     } finally {
@@ -143,52 +226,117 @@ export function Home() {
     }
   }
 
+  function sheetContent() {
+    switch (sheetState) {
+      case 'loading':
+        return <LoadingPanel />
+      case 'history':
+        return (
+          <HistoryPanel
+            entries={historyEntries}
+            onView={viewHistoryEntry}
+            onBack={() => setIntent(candidates.length > 0 ? 'results' : 'plan')}
+          />
+        )
+      case 'results':
+        return (
+          <ResultsPanel
+            mode={mode}
+            ranked={ranked}
+            rankBy={rankBy}
+            onRankByChange={setRankBy}
+            elevationMetric={elevationMetric}
+            onElevationMetricChange={setElevationMetric}
+            selectedIndex={selectedIndex}
+            onSelect={handleSelectCandidate}
+          />
+        )
+      case 'active':
+        return (
+          activeRoute && (
+            <ActivePanel
+              route={activeRoute}
+              mode={activeHistoryEntry?.mode ?? mode}
+              elevationMetric={elevationMetric}
+              onStart={() => setFollow(true)}
+              onBack={
+                candidates.length > 0 && !activeHistoryEntry
+                  ? () => setIntent('results')
+                  : null
+              }
+            />
+          )
+        )
+      default:
+        return (
+          <PlanPanel
+            mode={mode}
+            onModeChange={setMode}
+            activity={activity}
+            onActivityChange={setActivity}
+            durationMinutes={durationMinutes}
+            onDurationMinutesChange={setDurationMinutes}
+            start={start}
+            startLabel={startLabel}
+            onStartChange={handleStartChange}
+            stop={stop}
+            stopLabel={stopLabel}
+            onStopChange={handleStopChange}
+            onError={setError}
+            onSubmit={() => void handleGetRoute()}
+          />
+        )
+    }
+  }
+
+  const pinnedStart = start ?? activeHistoryEntry?.start ?? null
+
   return (
-    <main>
-      <h1>TrekkPilot</h1>
-      <p>Pick a duration, get a loop route.</p>
+    <div className="bg-ground relative h-dvh w-full overflow-hidden">
+      {/*
+        `isolate` matters: Leaflet gives its panes and controls z-indexes in the
+        400-800 range, which would otherwise paint over the pills and the sheet.
+        Isolating the map keeps those numbers inside this box.
+      */}
+      <div className="absolute inset-0 isolate z-0">
+        <MapCanvas
+          start={pinnedStart ? [pinnedStart.lat, pinnedStart.lon] : null}
+          routes={buildRoutePolylines(
+            candidates,
+            selectedIndex,
+            activeHistoryEntry,
+          )}
+          follow={follow}
+          onMapClick={handleStartChange}
+          {...livePositionProp(livePosition)}
+        />
+      </div>
 
-      <button type="button" onClick={toggleHistory}>
-        {isHistoryOpen ? 'Hide history' : 'History'}
-      </button>
-
-      <HistorySection
-        isOpen={isHistoryOpen}
-        entries={historyEntries}
-        onView={handleViewHistoryEntry}
-      />
-
-      <RouteForm
+      <TopPillBar
         mode={mode}
-        onModeChange={setMode}
         activity={activity}
-        onActivityChange={setActivity}
         durationMinutes={durationMinutes}
-        onDurationMinutesChange={setDurationMinutes}
-        elevationMetric={elevationMetric}
-        onElevationMetricChange={setElevationMetric}
-        start={start}
-        onStartChange={setStart}
-        stop={stop}
-        onStopChange={setStop}
-        onError={setError}
-        isLoading={isLoading}
-        onSubmit={() => void handleGetRoute()}
+        start={pinnedStart}
+        startLabel={startLabel}
+        follow={follow}
+        onToggleFollow={() => setFollow((current) => !current)}
+        onEditPlan={() => setIntent('plan')}
+        onEditStart={() => setIntent('plan')}
+        onOpenHistory={openHistory}
       />
 
-      {error && <p role="alert">{error}</p>}
+      <BottomSheet label={SHEET_LABELS[sheetState]}>
+        {sheetContent()}
+      </BottomSheet>
 
-      <CandidateList
-        candidates={candidates}
-        start={start}
-        elevationMetric={elevationMetric}
-        onSelect={handleSelectCandidate}
-      />
-
-      <ActiveRouteSection
-        activeRoute={activeRoute}
-        livePosition={livePosition}
-      />
-    </main>
+      {error && (
+        <p
+          role="alert"
+          className="border-waymark bg-surface text-ink absolute inset-x-3 top-20 z-40 rounded-xl border px-3 py-2 text-sm shadow-lg"
+        >
+          {error}
+        </p>
+      )}
+    </div>
   )
 }

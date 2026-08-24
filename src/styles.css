@@ -1,15 +1,81 @@
 @import 'tailwindcss';
 
+/**
+ * Semantic design tokens for the map-first shell. Components name the role
+ * ("bg-surface", "text-ink-2"), never the palette value, so the dark scheme
+ * below is the only place the actual colors change.
+ *
+ * Route polyline colors are deliberately NOT here: Leaflet takes literal hex
+ * and the OSM tiles stay light in either scheme, so those live in
+ * `ROUTE_COLORS` (src/lib/ranking.ts) and the in-sheet swatches read from the
+ * same array so a row always matches its line.
+ */
+@theme {
+  --color-ground: #eef1ea;
+  --color-surface: #ffffff;
+  --color-surface-2: #f6f8f3;
+  --color-line: #d1d9cb;
+  --color-ink: #16211c;
+  --color-ink-2: #43564c;
+  --color-ink-3: #6c7f74;
+  --color-moss: #0b6e4f;
+  --color-waymark: #b57c07;
+
+  --font-sans:
+    'Archivo', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono:
+    'IBM Plex Mono', ui-monospace, 'SFMono-Regular', 'Menlo', monospace;
+}
+
+/**
+ * Dark scheme. Plain custom-property overrides on `:root`, NOT a second
+ * `@theme` block: Tailwind hoists every `@theme` to the top level, so a nested
+ * one would escape this media query and repaint the whole app dark. The
+ * utilities generated above already resolve `var(--color-*)` at use time, so
+ * redefining the variables here is all it takes.
+ */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-ground: #111815;
+    --color-surface: #18211d;
+    --color-surface-2: #1d2722;
+    --color-line: #2e3c34;
+    --color-ink: #e7ede6;
+    --color-ink-2: #a9b8af;
+    --color-ink-3: #7d8e84;
+    --color-moss: #4fbf92;
+    --color-waymark: #e8b33c;
+  }
+}
+
 * {
   box-sizing: border-box;
 }
 
+html,
 body {
   margin: 0;
-  font-family: system-ui, sans-serif;
+  /* The map fills the viewport, so the page itself must never scroll — only
+     the sheet does. `dvh` keeps mobile browser chrome from clipping the map. */
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+  background-color: var(--color-ground);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
 }
 
-main {
-  width: min(42rem, calc(100% - 2rem));
-  margin: 4rem auto;
+/* Leaflet paints its own attribution/controls; keep them in the app's type. */
+.leaflet-container {
+  font-family: var(--font-sans);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

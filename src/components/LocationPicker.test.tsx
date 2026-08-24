@@ -22,6 +22,7 @@ describe('LocationPicker', () => {
         value={null}
         onChange={onChange}
         onError={vi.fn()}
+        hint="Tap the map to drop a pin, or:"
       />,
     )
 
@@ -31,7 +32,9 @@ describe('LocationPicker', () => {
     fireEvent.change(screen.getByLabelText(/longitude/i), {
       target: { value: '13.405' },
     })
-    fireEvent.click(screen.getByRole('button', { name: /set pin manually/i }))
+    fireEvent.click(
+      screen.getByRole('button', { name: /use these coordinates/i }),
+    )
 
     expect(onChange).toHaveBeenCalledWith({ lat: 52.52, lon: 13.405 })
   })
@@ -50,16 +53,20 @@ describe('LocationPicker', () => {
         value={null}
         onChange={onChange}
         onError={vi.fn()}
+        hint="Tap the map to drop a pin, or:"
       />,
     )
 
-    fireEvent.change(screen.getByLabelText(/search location/i), {
+    fireEvent.change(screen.getByLabelText(/search for a place/i), {
       target: { value: 'Berlin' },
     })
     fireEvent.click(screen.getByRole('button', { name: /search/i }))
 
     await vi.waitFor(() =>
-      expect(onChange).toHaveBeenCalledWith({ lat: 52.52, lon: 13.405 }),
+      expect(onChange).toHaveBeenCalledWith(
+        { lat: 52.52, lon: 13.405 },
+        'Berlin, Germany',
+      ),
     )
     expect(geocodeLocationMock).toHaveBeenCalledWith({
       data: { query: 'Berlin' },
@@ -76,10 +83,11 @@ describe('LocationPicker', () => {
         value={null}
         onChange={vi.fn()}
         onError={onError}
+        hint="Tap the map to drop a pin, or:"
       />,
     )
 
-    fireEvent.change(screen.getByLabelText(/search location/i), {
+    fireEvent.change(screen.getByLabelText(/search for a place/i), {
       target: { value: 'Nowhereville' },
     })
     fireEvent.click(screen.getByRole('button', { name: /search/i }))
@@ -91,6 +99,24 @@ describe('LocationPicker', () => {
     )
   })
 
+  it('keeps the raw coordinate fields folded away behind a disclosure', () => {
+    render(
+      <LocationPicker
+        legend="Start point"
+        idPrefix="start"
+        value={null}
+        onChange={vi.fn()}
+        onError={vi.fn()}
+        hint="Tap the map to drop a pin, or:"
+      />,
+    )
+
+    const disclosure = screen.getByText(/enter coordinates/i).closest('details')
+    expect(disclosure).not.toHaveAttribute('open')
+    expect(disclosure).toContainElement(screen.getByLabelText(/latitude/i))
+    expect(disclosure).toContainElement(screen.getByLabelText(/longitude/i))
+  })
+
   it('only shows the "use current location" button when showCurrentLocation is set', () => {
     const { rerender } = render(
       <LocationPicker
@@ -99,10 +125,11 @@ describe('LocationPicker', () => {
         value={null}
         onChange={vi.fn()}
         onError={vi.fn()}
+        hint="Tap the map to drop a pin, or:"
       />,
     )
     expect(
-      screen.queryByRole('button', { name: /use current location/i }),
+      screen.queryByRole('button', { name: /use my current location/i }),
     ).toBeNull()
 
     rerender(
@@ -112,11 +139,12 @@ describe('LocationPicker', () => {
         value={null}
         onChange={vi.fn()}
         onError={vi.fn()}
+        hint="Tap the map to drop a pin, or:"
         showCurrentLocation
       />,
     )
     expect(
-      screen.getByRole('button', { name: /use current location/i }),
+      screen.getByRole('button', { name: /use my current location/i }),
     ).toBeInTheDocument()
   })
 })

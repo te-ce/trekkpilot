@@ -1,5 +1,6 @@
 import type { ActivityType } from '#/lib/activity'
 import type { GeoPoint } from '#/components/LocationPicker'
+import type { RouteMode } from '#/lib/routeMode'
 import type { LoopRouteCandidate } from '#/server/ors'
 
 const HISTORY_KEY = 'trekkpilot-route-history'
@@ -10,6 +11,12 @@ const MAX_HISTORY_ENTRIES = 30
 export type HistoryEntry = {
   id: string
   activity: ActivityType
+  /**
+   * Loop or point-to-point. Entries written before this field existed read
+   * back as 'loop', which is what the app could only produce back then.
+   */
+  mode: RouteMode
+  /** Target duration the loop was planned for; meaningless for point-to-point. */
   durationMinutes: number
   /** Start point the route was generated from, needed to redisplay it on RouteMap. */
   start: GeoPoint
@@ -23,6 +30,8 @@ export type HistoryEntry = {
 
 export type SaveRouteToHistoryInput = {
   activity: ActivityType
+  /** Defaults to 'loop' for callers that predate point-to-point. */
+  mode?: RouteMode
   durationMinutes: number
   start: GeoPoint
   candidate: LoopRouteCandidate
@@ -50,14 +59,20 @@ function generateId(): string {
  * this module is device-local, best-effort storage, not a source of truth
  * that needs to surface parse errors to the user.
  */
+/** How an entry may actually look in storage: `mode` postdates the first entries. */
+type StoredHistoryEntry = Omit<HistoryEntry, 'mode'> & { mode?: RouteMode }
+
 export function getRouteHistory(): HistoryEntry[] {
   try {
     const raw = localStorage.getItem(HISTORY_KEY)
     if (!raw) {
       return []
     }
-    const parsed: HistoryEntry[] = JSON.parse(raw)
-    return Array.isArray(parsed) ? parsed : []
+    const parsed: StoredHistoryEntry[] = JSON.parse(raw)
+    if (!Array.isArray(parsed)) {
+      return []
+    }
+    return parsed.map((entry) => ({ ...entry, mode: entry.mode ?? 'loop' }))
   } catch {
     return []
   }
@@ -71,6 +86,7 @@ export function saveRouteToHistory(input: SaveRouteToHistoryInput): void {
   const entry: HistoryEntry = {
     id: generateId(),
     activity: input.activity,
+    mode: input.mode ?? 'loop',
     durationMinutes: input.durationMinutes,
     start: input.start,
     candidate: input.candidate,

@@ -1,5 +1,11 @@
 import { useState } from 'react'
 
+import {
+  FIELD_CLASS,
+  MICRO_LABEL_CLASS,
+  SECONDARY_BUTTON_CLASS,
+} from '#/lib/controlStyles'
+import { formatCoordinates } from '#/lib/labels'
 import { geocodeLocation } from '#/server/functions/geocodeLocation'
 
 export type GeoPoint = { lat: number; lon: number }
@@ -9,24 +15,33 @@ export type LocationPickerProps = {
   /** Prefixes element ids so start/stop pickers don't collide when both render. */
   idPrefix: string
   value: GeoPoint | null
-  onChange: (point: GeoPoint) => void
+  /** Place name for `value` when it came from a search, shown instead of coordinates. */
+  valueLabel?: string | null
+  onChange: (point: GeoPoint, label?: string) => void
   onError: (message: string) => void
   /** GPS lookup only makes sense for the user's own current position (the start point). */
   showCurrentLocation?: boolean
+  /** One line telling the user the fastest way to set this point. */
+  hint: string
 }
 
 /**
- * A single location input, reused for both the start and stop point (issue
- * 004): current-GPS (start only), a named-location search resolved via ORS
- * geocoding, or a manual lat/lon override.
+ * One location input, reused for the start and the stop point (issue 004).
+ *
+ * All three ways in from issue 001/004 are still here, but no longer as five
+ * equal-weight controls: tapping the map (handled by the map itself) and GPS
+ * are the obvious paths, a named-place search is next, and the raw lat/lon
+ * override sits folded away for the one person who has coordinates in hand.
  */
 export function LocationPicker({
   legend,
   idPrefix,
   value,
+  valueLabel,
   onChange,
   onError,
   showCurrentLocation = false,
+  hint,
 }: LocationPickerProps) {
   const [manualLat, setManualLat] = useState('')
   const [manualLon, setManualLon] = useState('')
@@ -64,7 +79,7 @@ export function LocationPicker({
     setIsSearching(true)
     try {
       const result = await geocodeLocation({ data: { query: searchQuery } })
-      onChange({ lat: result.lat, lon: result.lon })
+      onChange({ lat: result.lat, lon: result.lon }, result.label)
     } catch {
       onError(`Could not find a location for "${searchQuery}".`)
     } finally {
@@ -73,55 +88,92 @@ export function LocationPicker({
   }
 
   return (
-    <fieldset>
-      <legend>{legend}</legend>
+    <fieldset className="min-w-0">
+      <legend className={`mb-1.5 ${MICRO_LABEL_CLASS}`}>{legend}</legend>
+
+      <p className="text-ink-2 mb-2 text-sm">{hint}</p>
+
+      {value && (
+        <p className="text-ink mb-2 flex items-baseline gap-2 text-sm">
+          <span aria-hidden="true" className="text-moss">
+            ●
+          </span>
+          <span className={valueLabel ? '' : 'font-mono tabular-nums'}>
+            {valueLabel ?? formatCoordinates(value)}
+          </span>
+        </p>
+      )}
 
       {showCurrentLocation && (
-        <button type="button" onClick={useCurrentLocation}>
-          Use current location
+        <button
+          type="button"
+          onClick={useCurrentLocation}
+          className={`mb-2 w-full ${SECONDARY_BUTTON_CLASS}`}
+        >
+          Use my current location
         </button>
       )}
 
-      <label htmlFor={`${idPrefix}-search`}>Search location</label>
-      <input
-        id={`${idPrefix}-search`}
-        type="text"
-        value={searchQuery}
-        onChange={(event) => setSearchQuery(event.target.value)}
-      />
-      <button
-        type="button"
-        onClick={() => void searchLocation()}
-        disabled={isSearching}
-      >
-        {isSearching ? 'Searching…' : 'Search'}
-      </button>
+      <div className="flex gap-2">
+        <label htmlFor={`${idPrefix}-search`} className="sr-only">
+          Search for a place
+        </label>
+        <input
+          id={`${idPrefix}-search`}
+          type="search"
+          placeholder="Search for a place"
+          value={searchQuery}
+          onChange={(event) => setSearchQuery(event.target.value)}
+          className={FIELD_CLASS}
+        />
+        <button
+          type="button"
+          onClick={() => void searchLocation()}
+          disabled={isSearching}
+          className={SECONDARY_BUTTON_CLASS}
+        >
+          {isSearching ? 'Searching…' : 'Search'}
+        </button>
+      </div>
 
-      <label htmlFor={`${idPrefix}-lat`}>Latitude</label>
-      <input
-        id={`${idPrefix}-lat`}
-        type="number"
-        value={manualLat}
-        onChange={(event) => setManualLat(event.target.value)}
-      />
-
-      <label htmlFor={`${idPrefix}-lon`}>Longitude</label>
-      <input
-        id={`${idPrefix}-lon`}
-        type="number"
-        value={manualLon}
-        onChange={(event) => setManualLon(event.target.value)}
-      />
-
-      <button type="button" onClick={setPinManually}>
-        Set pin manually
-      </button>
-
-      {value && (
-        <p>
-          {legend}: {value.lat}, {value.lon}
-        </p>
-      )}
+      <details className="mt-2">
+        <summary className="text-ink-3 cursor-pointer py-1 text-sm">
+          Enter coordinates
+        </summary>
+        <div className="mt-2 flex flex-wrap items-end gap-2">
+          <div className="min-w-24 flex-1">
+            <label htmlFor={`${idPrefix}-lat`} className={MICRO_LABEL_CLASS}>
+              Latitude
+            </label>
+            <input
+              id={`${idPrefix}-lat`}
+              type="number"
+              value={manualLat}
+              onChange={(event) => setManualLat(event.target.value)}
+              className={`${FIELD_CLASS} font-mono tabular-nums`}
+            />
+          </div>
+          <div className="min-w-24 flex-1">
+            <label htmlFor={`${idPrefix}-lon`} className={MICRO_LABEL_CLASS}>
+              Longitude
+            </label>
+            <input
+              id={`${idPrefix}-lon`}
+              type="number"
+              value={manualLon}
+              onChange={(event) => setManualLon(event.target.value)}
+              className={`${FIELD_CLASS} font-mono tabular-nums`}
+            />
+          </div>
+          <button
+            type="button"
+            onClick={setPinManually}
+            className={SECONDARY_BUTTON_CLASS}
+          >
+            Use these coordinates
+          </button>
+        </div>
+      </details>
     </fieldset>
   )
 }

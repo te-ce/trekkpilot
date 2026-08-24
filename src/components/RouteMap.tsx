@@ -141,6 +141,9 @@ export function RouteMap({
     <MapContainer
       center={start ?? routes[0]?.coordinates[0] ?? DEFAULT_CENTER}
       zoom={DEFAULT_ZOOM}
+      // No zoom buttons: they land under the floating pill bar, and pinch,
+      // scroll and the keyboard +/- keys all still zoom.
+      zoomControl={false}
       className={className}
     >
       <TileLayer

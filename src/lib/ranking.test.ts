@@ -132,6 +132,24 @@ describe('rankCandidates ordering', () => {
     expect(order(rankCandidates(candidates, 'balanced'))).toEqual([1, 0])
   })
 
+  it('lets the chosen elevation metric drive the balanced elevation term', () => {
+    // Candidate 0 climbs a lot in gentle grades; candidate 1 barely climbs but
+    // does it in one wall. Which one "balanced" prefers depends entirely on
+    // which elevation signal the user picked.
+    const candidates = [
+      makeCandidate({ ascentMeters: 500, maxGradientPercent: 1 }),
+      makeCandidate({ ascentMeters: 0, maxGradientPercent: 30 }),
+    ]
+
+    expect(order(rankCandidates(candidates, 'balanced'))).toEqual([1, 0])
+    expect(order(rankCandidates(candidates, 'balanced', 'ascent'))).toEqual([
+      1, 0,
+    ])
+    expect(
+      order(rankCandidates(candidates, 'balanced', 'maxGradient')),
+    ).toEqual([0, 1])
+  })
+
   it('numbers ranks from 1 and keeps a candidate reachable by its original index', () => {
     const candidates = [
       makeCandidate({ turnCount: 40 }),

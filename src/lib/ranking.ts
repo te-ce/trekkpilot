@@ -7,7 +7,7 @@
  */
 
 import type { LoopRouteCandidate } from '#/server/ors'
-import { scoreCandidate } from '#/server/scoring'
+import { scoreCandidate, type ElevationMetricType } from '#/server/scoring'
 
 /** What the user is currently optimizing for. */
 export type RankBy = 'balanced' | 'flat' | 'gentle' | 'paths' | 'turns'
@@ -38,10 +38,17 @@ export const ROUTE_COLORS: readonly string[] = ['#0B6E4F', '#2F6690', '#A9700F']
  */
 const SORT_KEYS: Record<
   RankBy,
-  { value: (candidate: LoopRouteCandidate) => number; higherIsBetter: boolean }
+  {
+    value: (
+      candidate: LoopRouteCandidate,
+      elevationMetric: ElevationMetricType,
+    ) => number
+    higherIsBetter: boolean
+  }
 > = {
   balanced: {
-    value: (candidate) => scoreCandidate(candidate.metrics, 'ascent'),
+    value: (candidate, elevationMetric) =>
+      scoreCandidate(candidate.metrics, elevationMetric),
     higherIsBetter: true,
   },
   flat: {
@@ -148,17 +155,26 @@ function buildReason(
 /**
  * Re-ranks candidates for the selected optimization. Pure: the input array is
  * never mutated, and ties keep their original relative order.
+ *
+ * `elevationMetric` (issue 003) selects which elevation signal feeds the
+ * elevation term of the 'balanced' score; the other modes sort on a single
+ * explicit measure and ignore it. Note the split of responsibility: the server
+ * already used this metric to cut the 5 fetched loops down to the top 3, and
+ * this function re-ranks those same 3 on the client without refetching.
  */
 export function rankCandidates(
   candidates: LoopRouteCandidate[],
   rankBy: RankBy,
+  elevationMetric: ElevationMetricType = 'ascent',
 ): RankedCandidate[] {
   const { value, higherIsBetter } = SORT_KEYS[rankBy]
 
   return candidates
     .map((candidate, originalIndex) => ({ candidate, originalIndex }))
     .sort((a, b) => {
-      const delta = value(a.candidate) - value(b.candidate)
+      const delta =
+        value(a.candidate, elevationMetric) -
+        value(b.candidate, elevationMetric)
       return higherIsBetter ? -delta : delta
     })
     .map((entry, position) => ({
