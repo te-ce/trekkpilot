@@ -25,6 +25,12 @@ vi.mock('react-leaflet', () => ({
       data-position={JSON.stringify(props.position)}
     />
   ),
+  CircleMarker: (props: { center: [number, number] }) => (
+    <div
+      data-testid="live-position-marker"
+      data-center={JSON.stringify(props.center)}
+    />
+  ),
 }))
 
 import { RouteMap } from './RouteMap'
@@ -60,5 +66,42 @@ describe('RouteMap', () => {
     expect(positions).toEqual(coordinates)
     expect(positions[0]).toEqual(start)
     expect(positions.at(-1)).toEqual(start)
+  })
+
+  it('does not render a live position marker when no live position is given', () => {
+    render(
+      <RouteMap
+        start={[52.52, 13.405]}
+        coordinates={[
+          [52.52, 13.405],
+          [52.52, 13.405],
+        ]}
+      />,
+    )
+
+    expect(screen.queryByTestId('live-position-marker')).toBeNull()
+  })
+
+  it('renders the live position as a marker distinct from the start marker', () => {
+    const start: [number, number] = [52.52, 13.405]
+    const livePosition: [number, number] = [52.521, 13.406]
+
+    render(
+      <RouteMap
+        start={start}
+        coordinates={[start, start]}
+        livePosition={livePosition}
+      />,
+    )
+
+    expect(screen.getByTestId('live-position-marker')).toHaveAttribute(
+      'data-center',
+      JSON.stringify(livePosition),
+    )
+    // Still a separate marker from the route start.
+    expect(screen.getByTestId('start-marker')).toHaveAttribute(
+      'data-position',
+      JSON.stringify(start),
+    )
   })
 })

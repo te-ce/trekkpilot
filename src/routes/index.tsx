@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { LocationPicker, type GeoPoint } from '#/components/LocationPicker'
 import { RouteMap } from '#/components/RouteMap'
 import { isActivityType, type ActivityType } from '#/lib/activity'
+import { useLiveGeolocation } from '#/lib/useLiveGeolocation'
 import { getLoopRoute } from '#/server/functions/getLoopRoute'
 import { getPointToPointRoute } from '#/server/functions/getPointToPointRoute'
 import type { LoopRouteCandidate } from '#/server/ors'
@@ -55,6 +56,17 @@ function elevationMetricDisplay(
   }
 }
 
+function toTuple(point: GeoPoint): [number, number] {
+  return [point.lat, point.lon]
+}
+
+/** Builds the optional `livePosition` prop for RouteMap, respecting exactOptionalPropertyTypes. */
+function livePositionProp(
+  livePosition: GeoPoint | null,
+): { livePosition: [number, number] } | Record<string, never> {
+  return livePosition ? { livePosition: toTuple(livePosition) } : {}
+}
+
 export function Home() {
   const [mode, setMode] = useState<RouteMode>('loop')
   const [activity, setActivity] = useState<ActivityType>('cycling')
@@ -67,6 +79,7 @@ export function Home() {
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
+  const livePosition = useLiveGeolocation(selectedIndex !== null)
 
   async function handleGetRoute() {
     if (!start) {
@@ -240,6 +253,7 @@ export function Home() {
           <RouteMap
             start={[start.lat, start.lon]}
             coordinates={candidates[selectedIndex].coordinates}
+            {...livePositionProp(livePosition)}
           />
         </section>
       )}

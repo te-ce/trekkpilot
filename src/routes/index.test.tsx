@@ -11,11 +11,13 @@ vi.mock('#/components/RouteMap', () => ({
   RouteMap: (props: {
     start: [number, number]
     coordinates: [number, number][]
+    livePosition?: [number, number]
   }) => (
     <div
       data-testid="route-map"
       data-start={JSON.stringify(props.start)}
       data-coordinates={JSON.stringify(props.coordinates)}
+      data-live-position={JSON.stringify(props.livePosition ?? null)}
     />
   ),
 }))
@@ -43,8 +45,15 @@ describe('Home', () => {
     getLoopRouteMock.mockReset()
     getPointToPointRouteMock.mockReset()
     geocodeLocationMock.mockReset()
+    // Restore the harmless default stub from test-setup.ts so tests that
+    // don't care about geolocation (but may still activate live tracking by
+    // selecting a route) aren't left with a previous test's mock.
     Object.defineProperty(globalThis.navigator, 'geolocation', {
-      value: undefined,
+      value: {
+        getCurrentPosition: vi.fn(),
+        watchPosition: vi.fn(() => 0),
+        clearWatch: vi.fn(),
+      },
       configurable: true,
     })
   })
@@ -268,6 +277,54 @@ describe('Home', () => {
     expect(
       JSON.parse(activeMap.getAttribute('data-coordinates') ?? '[]'),
     ).toEqual(sampleCandidates[1]?.coordinates)
+  })
+
+  it('does not start live position tracking before a route is selected', async () => {
+    getLoopRouteMock.mockResolvedValue(sampleCandidates)
+    const watchPosition = vi.fn()
+    Object.defineProperty(globalThis.navigator, 'geolocation', {
+      value: { watchPosition, clearWatch: vi.fn() },
+      configurable: true,
+    })
+
+    render(<Home />)
+    await fetchCandidates()
+
+    expect(watchPosition).not.toHaveBeenCalled()
+  })
+
+  it('tracks and renders the live position on the active route once a route is selected', async () => {
+    getLoopRouteMock.mockResolvedValue(sampleCandidates)
+    let successCallback: PositionCallback | undefined
+    const watchPosition = vi.fn((success: PositionCallback) => {
+      successCallback = success
+      return 1
+    })
+    Object.defineProperty(globalThis.navigator, 'geolocation', {
+      value: { watchPosition, clearWatch: vi.fn() },
+      configurable: true,
+    })
+
+    render(<Home />)
+    await fetchCandidates()
+
+    fireEvent.click(
+      screen.getAllByRole('button', { name: /use this route/i })[0]!,
+    )
+
+    expect(watchPosition).toHaveBeenCalledTimes(1)
+
+    successCallback?.({
+      coords: { latitude: 52.523, longitude: 13.407 },
+    } as GeolocationPosition)
+
+    const activeSection = screen.getByTestId('active-route')
+    await waitFor(() =>
+      expect(within(activeSection).getByTestId('route-map')).toHaveAttribute(
+        'data-live-position',
+        JSON.stringify([52.523, 13.407]),
+      ),
+    )
   })
 
   it('defaults to loop mode with the duration field visible and no stop point section', () => {
