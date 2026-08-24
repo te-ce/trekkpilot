@@ -2,7 +2,12 @@ import { render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 /** The Leaflet map handle the component drives imperatively. */
-const map = vi.hoisted(() => ({ setView: vi.fn(), fitBounds: vi.fn() }))
+const map = vi.hoisted(() => ({
+  setView: vi.fn(),
+  fitBounds: vi.fn(),
+  invalidateSize: vi.fn(),
+  getContainer: vi.fn(() => document.createElement('div')),
+}))
 
 /**
  * Captures the handlers the component registers via `useMapEvents`. Several

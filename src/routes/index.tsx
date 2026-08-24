@@ -145,6 +145,15 @@ export function Home() {
   const [follow, setFollow] = useState(false)
   const [jumpTo, setJumpTo] = useState<MapJumpRequest | null>(null)
   const [intent, setIntent] = useState<SheetIntent>('plan')
+  const [sheetMinimized, setSheetMinimized] = useState(false)
+
+  // A new sheet intent is always a fresh ask for the user's attention —
+  // fetched results, a picked history entry, the plan form reopened — so a
+  // prior minimize (from looking at the map) shouldn't hide it.
+  function showSheet(nextIntent: SheetIntent) {
+    setIntent(nextIntent)
+    setSheetMinimized(false)
+  }
 
   const ranked = rankCandidates(candidates, rankBy, elevationMetric)
   const activeRoute = computeActiveRoute(
@@ -193,7 +202,7 @@ export function Home() {
     }
     setActiveHistoryEntry(null)
     setSelectedIndex(originalIndex)
-    setIntent('active')
+    showSheet('active')
   }
 
   /**
@@ -223,14 +232,14 @@ export function Home() {
 
   function openHistory() {
     setHistoryEntries(getRouteHistory())
-    setIntent('history')
+    showSheet('history')
   }
 
   /** Reopens a saved route (issue 008) as the active one. */
   function viewHistoryEntry(entry: HistoryEntry) {
     setSelectedIndex(null)
     setActiveHistoryEntry(entry)
-    setIntent('active')
+    showSheet('active')
   }
 
   /**
@@ -263,7 +272,7 @@ export function Home() {
               data: { activity, start, durationMinutes, elevationMetric },
             })
       setCandidates(result)
-      setIntent('results')
+      showSheet('results')
     } catch {
       setError('Could not fetch a route. Please try again.')
     } finally {
@@ -280,7 +289,7 @@ export function Home() {
           <HistoryPanel
             entries={historyEntries}
             onView={viewHistoryEntry}
-            onBack={() => setIntent(candidates.length > 0 ? 'results' : 'plan')}
+            onBack={() => showSheet(candidates.length > 0 ? 'results' : 'plan')}
           />
         )
       case 'results':
@@ -306,7 +315,7 @@ export function Home() {
               onStart={() => setFollow(true)}
               onBack={
                 candidates.length > 0 && !activeHistoryEntry
-                  ? () => setIntent('results')
+                  ? () => showSheet('results')
                   : null
               }
             />
@@ -337,13 +346,18 @@ export function Home() {
   const pinnedStart = start ?? activeHistoryEntry?.start ?? null
 
   return (
-    <div className="bg-ground relative h-dvh w-full overflow-hidden">
+    <div className="bg-ground relative grid h-dvh w-full grid-rows-[minmax(0,1fr)_auto] overflow-hidden md:block">
       {/*
         `isolate` matters: Leaflet gives its panes and controls z-indexes in the
         400-800 range, which would otherwise paint over the pills and the sheet.
         Isolating the map keeps those numbers inside this box.
+
+        On mobile the map is a real grid row, not a full-bleed overlay: it
+        shrinks in place when the plan sheet below it expands, and grows back
+        when the sheet is minimized. From `md` up there's room for both, so it
+        reverts to filling the whole screen behind a floating sheet.
       */}
-      <div className="absolute inset-0 isolate z-0">
+      <div className="relative isolate z-0 min-h-0 md:absolute md:inset-0">
         <MapCanvas
           start={pinnedStart ? [pinnedStart.lat, pinnedStart.lon] : null}
           routes={buildRoutePolylines(
@@ -368,12 +382,16 @@ export function Home() {
         follow={follow}
         onToggleFollow={() => setFollow((current) => !current)}
         onLocateMe={locateMe}
-        onEditPlan={() => setIntent('plan')}
-        onEditStart={() => setIntent('plan')}
+        onEditPlan={() => showSheet('plan')}
+        onEditStart={() => showSheet('plan')}
         onOpenHistory={openHistory}
       />
 
-      <BottomSheet label={SHEET_LABELS[sheetState]}>
+      <BottomSheet
+        label={SHEET_LABELS[sheetState]}
+        minimized={sheetMinimized}
+        onToggleMinimized={() => setSheetMinimized((current) => !current)}
+      >
         {sheetContent()}
       </BottomSheet>
 

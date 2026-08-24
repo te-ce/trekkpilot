@@ -218,6 +218,29 @@ function FitRoutes({
   return null
 }
 
+/**
+ * Keeps Leaflet's cached container size in sync with the DOM.
+ *
+ * Leaflet measures its container once and caches that size; it has no way to
+ * know the mobile split-screen layout just resized it (minimizing/expanding
+ * the plan sheet changes the map's grid row, not the window), so without this
+ * the map would keep rendering at its stale size until the next manual pan.
+ */
+function InvalidateSizeOnResize() {
+  const map = useMap()
+
+  useEffect(() => {
+    const container = map.getContainer()
+    const observer = new ResizeObserver(() => {
+      map.invalidateSize()
+    })
+    observer.observe(container)
+    return () => observer.disconnect()
+  }, [map])
+
+  return null
+}
+
 /** Where the first paint sits: the start pin, else the first route, else home. */
 function initialCenter(
   start: [number, number] | null,
@@ -264,6 +287,7 @@ export function RouteMap({
         url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
       />
+      <InvalidateSizeOnResize />
       {onMapClick && <MapClickHandler onMapClick={onMapClick} />}
       <FollowLivePosition livePosition={livePosition} follow={follow} />
       {follow && onFollowCancel && (
