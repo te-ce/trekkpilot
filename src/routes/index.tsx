@@ -9,7 +9,7 @@ import { MapCanvas } from '#/components/MapCanvas'
 import { type GeoPoint } from '#/components/LocationPicker'
 import { PlanPanel } from '#/components/PlanPanel'
 import { ResultsPanel } from '#/components/ResultsPanel'
-import type { RoutePolyline } from '#/components/RouteMap'
+import type { MapJumpRequest, RoutePolyline } from '#/components/RouteMap'
 import { TopPillBar } from '#/components/TopPillBar'
 import type { ActivityType } from '#/lib/activity'
 import {
@@ -50,6 +50,13 @@ function livePositionProp(
   return livePosition
     ? { livePosition: [livePosition.lat, livePosition.lon] }
     : {}
+}
+
+/** Builds the optional `jumpTo` prop, respecting exactOptionalPropertyTypes. */
+function jumpToProp(
+  jumpTo: MapJumpRequest | null,
+): { jumpTo: MapJumpRequest } | Record<string, never> {
+  return jumpTo ? { jumpTo } : {}
 }
 
 /**
@@ -133,6 +140,7 @@ export function Home() {
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [follow, setFollow] = useState(false)
+  const [jumpTo, setJumpTo] = useState<MapJumpRequest | null>(null)
   const [intent, setIntent] = useState<SheetIntent>('plan')
 
   const ranked = rankCandidates(candidates, rankBy, elevationMetric)
@@ -142,7 +150,16 @@ export function Home() {
     selectedIndex,
     activeHistoryEntry,
   )
-  const livePosition = useLiveGeolocation(activeRoute !== null)
+  /**
+   * Tracking runs when the user has asked to see themselves — they centred the
+   * map on their position, switched follow on, or picked a route to walk — and
+   * never merely because the page loaded (issue 005): a watch from first paint
+   * would drain the battery and pop the permission prompt at people who only
+   * came to plan a route. The hook itself still pauses while backgrounded.
+   */
+  const livePosition = useLiveGeolocation(
+    follow || jumpTo !== null || activeRoute !== null,
+  )
 
   const sheetState = resolveSheetState({
     intent,
@@ -174,6 +191,31 @@ export function Home() {
     setActiveHistoryEntry(null)
     setSelectedIndex(originalIndex)
     setIntent('active')
+  }
+
+  /**
+   * Centres the map on where the user is right now, once. Reads a fresh fix
+   * with `getCurrentPosition` rather than waiting on the watch, so the first
+   * tap moves the map instead of doing nothing until a fix arrives. The
+   * incrementing token makes a repeat tap a new request, so the map still comes
+   * back after the user has panned away.
+   *
+   * Deliberately does not touch the start point: seeing where you are and
+   * choosing where a route begins are different decisions, and the plan sheet
+   * already owns the second one.
+   */
+  function locateMe() {
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setJumpTo((previous) => ({
+          position: [position.coords.latitude, position.coords.longitude],
+          token: (previous?.token ?? 0) + 1,
+        }))
+      },
+      () => {
+        setError('Could not read the current GPS location.')
+      },
+    )
   }
 
   function openHistory() {
@@ -307,8 +349,10 @@ export function Home() {
             activeHistoryEntry,
           )}
           follow={follow}
+          onFollowCancel={() => setFollow(false)}
           onMapClick={handleStartChange}
           {...livePositionProp(livePosition)}
+          {...jumpToProp(jumpTo)}
         />
       </div>
 
@@ -320,6 +364,7 @@ export function Home() {
         startLabel={startLabel}
         follow={follow}
         onToggleFollow={() => setFollow((current) => !current)}
+        onLocateMe={locateMe}
         onEditPlan={() => setIntent('plan')}
         onEditStart={() => setIntent('plan')}
         onOpenHistory={openHistory}

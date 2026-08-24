@@ -10,8 +10,8 @@ import type { RouteMode } from '#/lib/routeMode'
 
 /**
  * The floating bar over the map: what was asked for, where it starts, and the
- * two controls that belong to the map rather than the sheet (follow and
- * history). Safe-area aware, because on a phone this sits under the notch.
+ * controls that belong to the map rather than the sheet (centre-on-me, follow
+ * and history). Safe-area aware, because on a phone this sits under the notch.
  */
 export function TopPillBar({
   mode,
@@ -21,6 +21,7 @@ export function TopPillBar({
   startLabel,
   follow,
   onToggleFollow,
+  onLocateMe,
   onEditPlan,
   onEditStart,
   onOpenHistory,
@@ -32,6 +33,7 @@ export function TopPillBar({
   startLabel: string | null
   follow: boolean
   onToggleFollow: () => void
+  onLocateMe: () => void
   onEditPlan: () => void
   onEditStart: () => void
   onOpenHistory: () => void
@@ -71,12 +73,33 @@ export function TopPillBar({
       </div>
 
       <div className="pointer-events-auto flex gap-2">
+        {/*
+          Two separate controls, because they are two separate wishes: "show me
+          where I am, once" and "keep the map on me". Merging them would make
+          one tap either fail to lock or lock when the user only wanted a look.
+        */}
+        <button
+          type="button"
+          aria-label="Centre the map on my location"
+          title="Centre the map on my location"
+          onClick={onLocateMe}
+          className={ICON_BUTTON_CLASS}
+        >
+          <span aria-hidden="true">⌖</span>
+        </button>
         <button
           type="button"
           aria-label="Follow my position"
+          title="Follow my position"
           aria-pressed={follow}
           onClick={onToggleFollow}
-          className={`${ICON_BUTTON_CLASS} ${follow ? 'text-moss' : ''}`}
+          // On/off has to be readable at a glance in sunlight, so the pressed
+          // state fills the button rather than only tinting the glyph. Driven
+          // off `aria-pressed` rather than a conditional class: the attribute
+          // selector outranks the base `bg-surface`, which a plain second
+          // `bg-*` class would not — stylesheet order, not attribute order,
+          // decides between two utilities of equal specificity.
+          className={`${ICON_BUTTON_CLASS} aria-pressed:border-moss aria-pressed:bg-moss aria-pressed:text-surface`}
         >
           <span aria-hidden="true">◎</span>
         </button>

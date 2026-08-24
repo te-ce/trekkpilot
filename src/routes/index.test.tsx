@@ -23,6 +23,8 @@ vi.mock('#/components/MapCanvas', () => ({
     }[]
     livePosition?: [number, number]
     follow?: boolean
+    jumpTo?: { position: [number, number]; token: number }
+    onFollowCancel?: () => void
     onMapClick?: (point: { lat: number; lon: number }) => void
   }) => (
     <div
@@ -31,9 +33,14 @@ vi.mock('#/components/MapCanvas', () => ({
       data-routes={JSON.stringify(props.routes)}
       data-live-position={JSON.stringify(props.livePosition ?? null)}
       data-follow={String(props.follow ?? false)}
+      data-jump-to={JSON.stringify(props.jumpTo ?? null)}
     >
       <button type="button" onClick={() => props.onMapClick?.(MAP_TAP_POINT)}>
         tap the map
+      </button>
+      {/* Stands in for a real drag gesture on the Leaflet map. */}
+      <button type="button" onClick={() => props.onFollowCancel?.()}>
+        drag the map
       </button>
     </div>
   ),
@@ -673,6 +680,163 @@ describe('Home', () => {
       'data-follow',
       'false',
     )
+  })
+
+  /** Stubs geolocation so both the one-shot read and the watch resolve. */
+  function stubGeolocationAt(lat: number, lon: number) {
+    const coords = { latitude: lat, longitude: lon } as GeolocationCoordinates
+    const getCurrentPosition = vi.fn((success: PositionCallback) => {
+      success({ coords } as GeolocationPosition)
+    })
+    const watchPosition = vi.fn((success: PositionCallback) => {
+      success({ coords } as GeolocationPosition)
+      return 1
+    })
+    Object.defineProperty(globalThis.navigator, 'geolocation', {
+      value: { getCurrentPosition, watchPosition, clearWatch: vi.fn() },
+      configurable: true,
+    })
+    return { getCurrentPosition, watchPosition }
+  }
+
+  it('centres the map on the current position on demand, with no route and no start point', async () => {
+    stubGeolocationAt(48.2082, 16.3738)
+
+    render(<Home />)
+    expect(screen.getByTestId('route-map')).toHaveAttribute(
+      'data-jump-to',
+      'null',
+    )
+
+    fireEvent.click(
+      screen.getByRole('button', { name: /centre the map on my location/i }),
+    )
+
+    await waitFor(() =>
+      expect(
+        JSON.parse(
+          screen.getByTestId('route-map').getAttribute('data-jump-to') ??
+            'null',
+        ),
+      ).toMatchObject({ position: [48.2082, 16.3738] }),
+    )
+    // Centring must not silently adopt the position as the start point.
+    expect(screen.getByTestId('route-map')).toHaveAttribute(
+      'data-start',
+      'null',
+    )
+  })
+
+  it('asks again on a second tap, so it still recentres after a pan', async () => {
+    stubGeolocationAt(48.2082, 16.3738)
+
+    render(<Home />)
+    const centre = screen.getByRole('button', {
+      name: /centre the map on my location/i,
+    })
+    fireEvent.click(centre)
+    await waitFor(() =>
+      expect(screen.getByTestId('route-map')).not.toHaveAttribute(
+        'data-jump-to',
+        'null',
+      ),
+    )
+    const first = screen.getByTestId('route-map').getAttribute('data-jump-to')
+
+    fireEvent.click(centre)
+
+    await waitFor(() =>
+      expect(
+        screen.getByTestId('route-map').getAttribute('data-jump-to'),
+      ).not.toBe(first),
+    )
+  })
+
+  it('shows the live position dot once the map has been centred on it', async () => {
+    stubGeolocationAt(48.2082, 16.3738)
+
+    render(<Home />)
+    fireEvent.click(
+      screen.getByRole('button', { name: /centre the map on my location/i }),
+    )
+
+    await waitFor(() =>
+      expect(screen.getByTestId('route-map')).toHaveAttribute(
+        'data-live-position',
+        JSON.stringify([48.2082, 16.3738]),
+      ),
+    )
+  })
+
+  it('reports a refused or unavailable position instead of doing nothing', () => {
+    Object.defineProperty(globalThis.navigator, 'geolocation', {
+      value: {
+        getCurrentPosition: vi.fn(
+          (_success: PositionCallback, failure?: PositionErrorCallback) => {
+            failure?.({ code: 1 } as GeolocationPositionError)
+          },
+        ),
+        watchPosition: vi.fn(() => 1),
+        clearWatch: vi.fn(),
+      },
+      configurable: true,
+    })
+
+    render(<Home />)
+    fireEvent.click(
+      screen.getByRole('button', { name: /centre the map on my location/i }),
+    )
+
+    expect(screen.getByRole('alert')).toHaveTextContent(/location/i)
+    expect(screen.getByTestId('route-map')).toHaveAttribute(
+      'data-jump-to',
+      'null',
+    )
+  })
+
+  it('tracks and follows the live position from the pill bar, with no route picked', async () => {
+    const { watchPosition } = stubGeolocationAt(48.2082, 16.3738)
+
+    render(<Home />)
+    expect(watchPosition).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: /follow my position/i }))
+
+    expect(watchPosition).toHaveBeenCalledTimes(1)
+    expect(
+      screen.getByRole('button', { name: /follow my position/i }),
+    ).toHaveAttribute('aria-pressed', 'true')
+    await waitFor(() =>
+      expect(screen.getByTestId('route-map')).toHaveAttribute(
+        'data-live-position',
+        JSON.stringify([48.2082, 16.3738]),
+      ),
+    )
+    expect(screen.getByTestId('route-map')).toHaveAttribute(
+      'data-follow',
+      'true',
+    )
+  })
+
+  it('stops following when the user drags the map', () => {
+    stubGeolocationAt(48.2082, 16.3738)
+
+    render(<Home />)
+    fireEvent.click(screen.getByRole('button', { name: /follow my position/i }))
+    expect(screen.getByTestId('route-map')).toHaveAttribute(
+      'data-follow',
+      'true',
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /drag the map/i }))
+
+    expect(screen.getByTestId('route-map')).toHaveAttribute(
+      'data-follow',
+      'false',
+    )
+    expect(
+      screen.getByRole('button', { name: /follow my position/i }),
+    ).toHaveAttribute('aria-pressed', 'false')
   })
 
   it('says so when there is no history yet', () => {

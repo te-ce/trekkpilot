@@ -1,7 +1,7 @@
 import 'leaflet/dist/leaflet.css'
 
 import L from 'leaflet'
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import {
   CircleMarker,
   MapContainer,
@@ -21,6 +21,17 @@ export type RoutePolyline = {
   isActive: boolean
 }
 
+/**
+ * A one-shot "put the viewport here" request. The `token` is what makes it
+ * one-shot: the same coordinates asked for twice are two distinct requests
+ * (tap "centre on me", pan away, tap it again), so the position alone cannot
+ * tell them apart.
+ */
+export type MapJumpRequest = {
+  position: [number, number]
+  token: number
+}
+
 export type RouteMapProps = {
   /** Start pin, or null before a start point is chosen. */
   start: [number, number] | null
@@ -28,6 +39,13 @@ export type RouteMapProps = {
   livePosition?: [number, number]
   /** When true, recenter the map as livePosition changes. */
   follow?: boolean
+  /** Centres the map once per distinct `token`, at a street-level zoom. */
+  jumpTo?: MapJumpRequest
+  /**
+   * Called when the user drags the map themselves, so the caller can drop out
+   * of follow mode. Only listened for while `follow` is on.
+   */
+  onFollowCancel?: () => void
   /** Called when the user taps the map, for drop-a-pin start selection. */
   onMapClick?: (point: { lat: number; lon: number }) => void
   /** Extra classes for the map container, so callers control height/layout. */
@@ -40,6 +58,13 @@ export type RouteMapProps = {
  */
 const DEFAULT_CENTER: [number, number] = [51.1657, 10.4515]
 const DEFAULT_ZOOM = 14
+
+/**
+ * Zoom used when jumping to the user's own position: two steps in from the
+ * default, close enough to make out the street you are standing on without
+ * losing the surrounding block.
+ */
+const LOCATE_ZOOM = 16
 
 const ACTIVE_PATH_OPTIONS = { weight: 6, opacity: 1 } as const
 const INACTIVE_PATH_OPTIONS = { weight: 3, opacity: 0.45 } as const
@@ -106,11 +131,66 @@ function FollowLivePosition({
 }
 
 /**
+ * Drops out of follow mode the moment the user drags the map.
+ *
+ * A follow mode that fights the user's own panning is worse than no follow
+ * mode at all: every pan would be yanked back on the next GPS fix. Leaflet's
+ * `dragstart` only fires for real user gestures — `map.setView` from
+ * `FollowLivePosition` does not raise it — so this cannot cancel itself.
+ */
+function CancelFollowOnDrag({
+  onFollowCancel,
+}: {
+  onFollowCancel: () => void
+}) {
+  useMapEvents({
+    dragstart: () => {
+      onFollowCancel()
+    },
+  })
+  return null
+}
+
+/**
+ * Honours one-shot centring requests: one `map.setView` per distinct token,
+ * regardless of whether the coordinates changed.
+ */
+function JumpToPosition({ jumpTo }: { jumpTo: MapJumpRequest | undefined }) {
+  const map = useMap()
+  const token = jumpTo?.token
+  const position = jumpTo?.position
+
+  useEffect(() => {
+    // eslint-disable-next-line react-you-might-not-need-an-effect/no-event-handler -- syncing an imperative Leaflet viewport, not deriving state
+    if (!position) {
+      return
+    }
+    map.setView(position, LOCATE_ZOOM)
+    // eslint-disable-next-line react/exhaustive-deps -- keyed on the token, not the coordinates: the same point asked for twice is two jumps
+  }, [map, token])
+
+  return null
+}
+
+/**
  * Fits the viewport to every drawn route, so several overlaid loops are all
  * visible at once. Does nothing when there is nothing to fit.
  */
-function FitRoutes({ routes }: { routes: RoutePolyline[] }) {
+function FitRoutes({
+  routes,
+  follow,
+}: {
+  routes: RoutePolyline[]
+  follow: boolean
+}) {
   const map = useMap()
+  // Follow wins over fit-bounds: someone who is out walking with the map
+  // locked to their position keeps that lock even if a fresh search lands.
+  // Read through a ref, deliberately outside the effect's deps, so *toggling*
+  // follow never triggers a fit — otherwise cancelling follow by panning would
+  // immediately snap the viewport back onto the route the user just panned off.
+  const followRef = useRef(follow)
+  followRef.current = follow
   // Effects compare deps by identity, and a fresh search hands us new geometry
   // under the same ids, so the key fingerprints the geometry itself: how many
   // points each route has and where it starts and ends.
@@ -128,7 +208,7 @@ function FitRoutes({ routes }: { routes: RoutePolyline[] }) {
   )
 
   useEffect(() => {
-    if (points.length === 0) {
+    if (points.length === 0 || followRef.current) {
       return
     }
     // eslint-disable-next-line react-you-might-not-need-an-effect/no-event-handler -- syncing an imperative Leaflet viewport, not deriving state
@@ -136,6 +216,14 @@ function FitRoutes({ routes }: { routes: RoutePolyline[] }) {
   }, [map, points])
 
   return null
+}
+
+/** Where the first paint sits: the start pin, else the first route, else home. */
+function initialCenter(
+  start: [number, number] | null,
+  routes: RoutePolyline[],
+): [number, number] {
+  return start ?? routes[0]?.coordinates[0] ?? DEFAULT_CENTER
 }
 
 /**
@@ -152,6 +240,8 @@ export function RouteMap({
   routes,
   livePosition,
   follow = false,
+  jumpTo,
+  onFollowCancel,
   onMapClick,
   className = 'h-full w-full',
 }: RouteMapProps) {
@@ -163,7 +253,7 @@ export function RouteMap({
 
   return (
     <MapContainer
-      center={start ?? routes[0]?.coordinates[0] ?? DEFAULT_CENTER}
+      center={initialCenter(start, routes)}
       zoom={DEFAULT_ZOOM}
       // No zoom buttons: they land under the floating pill bar, and pinch,
       // scroll and the keyboard +/- keys all still zoom.
@@ -176,7 +266,11 @@ export function RouteMap({
       />
       {onMapClick && <MapClickHandler onMapClick={onMapClick} />}
       <FollowLivePosition livePosition={livePosition} follow={follow} />
-      <FitRoutes routes={routes} />
+      {follow && onFollowCancel && (
+        <CancelFollowOnDrag onFollowCancel={onFollowCancel} />
+      )}
+      <JumpToPosition jumpTo={jumpTo} />
+      <FitRoutes routes={routes} follow={follow} />
       {drawOrder.map((route) => (
         <Polyline
           key={route.id}

@@ -4,10 +4,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 /** The Leaflet map handle the component drives imperatively. */
 const map = vi.hoisted(() => ({ setView: vi.fn(), fitBounds: vi.fn() }))
 
-/** Captures the handlers the component registers via `useMapEvents`. */
+/**
+ * Captures the handlers the component registers via `useMapEvents`. Several
+ * children register their own, so the handlers are merged rather than replaced.
+ */
 const mapEvents = vi.hoisted(() => ({
   handlers: null as null | {
     click?: (event: { latlng: { lat: number; lng: number } }) => void
+    dragstart?: () => void
   },
 }))
 
@@ -64,8 +68,9 @@ vi.mock('react-leaflet', () => ({
   useMap: () => map,
   useMapEvents: (handlers: {
     click?: (event: { latlng: { lat: number; lng: number } }) => void
+    dragstart?: () => void
   }) => {
-    mapEvents.handlers = handlers
+    mapEvents.handlers = { ...mapEvents.handlers, ...handlers }
     return map
   },
 }))
@@ -329,6 +334,136 @@ describe('RouteMap interactions', () => {
     render(<RouteMap start={START} routes={[]} />)
 
     expect(map.fitBounds).not.toHaveBeenCalled()
+  })
+})
+
+describe('RouteMap follow versus fit-bounds', () => {
+  beforeEach(() => {
+    map.fitBounds.mockClear()
+  })
+
+  it('does not steal the viewport to fit new routes while following', () => {
+    const { rerender } = render(
+      <RouteMap
+        start={START}
+        routes={[]}
+        follow
+        livePosition={[52.52, 13.4]}
+      />,
+    )
+
+    rerender(
+      <RouteMap
+        start={START}
+        routes={[route({ coordinates: [START, [52.6, 13.5]] })]}
+        follow
+        livePosition={[52.52, 13.4]}
+      />,
+    )
+
+    expect(map.fitBounds).not.toHaveBeenCalled()
+  })
+
+  it('does not fit already-drawn routes when following is switched off', () => {
+    const { rerender } = render(
+      <RouteMap start={START} routes={[route()]} follow />,
+    )
+    map.fitBounds.mockClear()
+
+    rerender(<RouteMap start={START} routes={[route()]} />)
+
+    // Turning follow off (a manual pan does exactly that) must leave the
+    // viewport where the user put it, not snap it back to the route.
+    expect(map.fitBounds).not.toHaveBeenCalled()
+  })
+})
+
+describe('RouteMap follow cancellation', () => {
+  beforeEach(() => {
+    mapEvents.handlers = null
+  })
+
+  it('cancels following as soon as the user drags the map themselves', () => {
+    const onFollowCancel = vi.fn()
+
+    render(
+      <RouteMap
+        start={START}
+        routes={[]}
+        follow
+        livePosition={[52.52, 13.405]}
+        onFollowCancel={onFollowCancel}
+      />,
+    )
+
+    mapEvents.handlers?.dragstart?.()
+
+    expect(onFollowCancel).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not listen for drags when following is off', () => {
+    const onFollowCancel = vi.fn()
+
+    render(
+      <RouteMap
+        start={START}
+        routes={[]}
+        livePosition={[52.52, 13.405]}
+        onFollowCancel={onFollowCancel}
+      />,
+    )
+
+    expect(mapEvents.handlers?.dragstart).toBeUndefined()
+  })
+})
+
+describe('RouteMap jump to a position', () => {
+  beforeEach(() => {
+    map.setView.mockClear()
+  })
+
+  it('centres on a requested position at a closer zoom than the default', () => {
+    render(
+      <RouteMap
+        start={null}
+        routes={[]}
+        jumpTo={{ position: [48.2082, 16.3738], token: 1 }}
+      />,
+    )
+
+    expect(map.setView).toHaveBeenCalledTimes(1)
+    const [position, zoom] = map.setView.mock.calls[0] ?? []
+    expect(position).toEqual([48.2082, 16.3738])
+    expect(zoom).toBeGreaterThan(14)
+  })
+
+  it('jumps again when the same position is requested a second time', () => {
+    const { rerender } = render(
+      <RouteMap
+        start={null}
+        routes={[]}
+        jumpTo={{ position: [48.2082, 16.3738], token: 1 }}
+      />,
+    )
+    map.setView.mockClear()
+
+    // Same coordinates, new request: tapping "centre on me" while already
+    // centred there must still pull the viewport back after a pan.
+    rerender(
+      <RouteMap
+        start={null}
+        routes={[]}
+        jumpTo={{ position: [48.2082, 16.3738], token: 2 }}
+      />,
+    )
+
+    expect(map.setView).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not touch the viewport when nothing has been requested', () => {
+    render(<RouteMap start={START} routes={[]} />)
+
+    expect(map.setView).not.toHaveBeenCalled()
   })
 })
 
