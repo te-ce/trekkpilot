@@ -780,6 +780,39 @@ describe('Home', () => {
     return { getCurrentPosition, watchPosition }
   }
 
+  function stubPermissionState(state: PermissionState) {
+    Object.defineProperty(globalThis.navigator, 'permissions', {
+      value: { query: vi.fn(() => Promise.resolve({ state })) },
+      configurable: true,
+    })
+  }
+
+  it('centres the map on the current position on load when permission is already granted', async () => {
+    stubGeolocationAt(48.2082, 16.3738)
+    stubPermissionState('granted')
+
+    render(<Home />)
+
+    await waitFor(() =>
+      expect(
+        JSON.parse(
+          screen.getByTestId('route-map').getAttribute('data-jump-to') ??
+            'null',
+        ),
+      ).toMatchObject({ position: [48.2082, 16.3738] }),
+    )
+  })
+
+  it('does not ask for the current position on load without granted permission', async () => {
+    const { getCurrentPosition } = stubGeolocationAt(48.2082, 16.3738)
+    stubPermissionState('prompt')
+
+    render(<Home />)
+
+    await Promise.resolve()
+    expect(getCurrentPosition).not.toHaveBeenCalled()
+  })
+
   it('centres the map on the current position on demand, with no route and no start point', async () => {
     stubGeolocationAt(48.2082, 16.3738)
 

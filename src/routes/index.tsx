@@ -1,5 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { ActivePanel, type ActiveRoute } from '#/components/ActivePanel'
 import { BottomSheet } from '#/components/BottomSheet'
@@ -229,6 +229,29 @@ export function Home() {
       },
     )
   }
+
+  /**
+   * Centres the map on the user as soon as the page loads, but only if
+   * permission is already granted — this must never itself trigger the
+   * browser's permission prompt, since arriving at the page is not the same
+   * as asking to be located. A denial or missing permission is silent: there
+   * is no user action to blame it on.
+   */
+  useEffect(() => {
+    let cancelled = false
+    navigator.permissions
+      .query({ name: 'geolocation' })
+      .then((status) => {
+        if (!cancelled && status.state === 'granted') {
+          locateMe()
+        }
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react/exhaustive-deps -- run once on mount only, never on locateMe identity
+  }, [])
 
   function openHistory() {
     setHistoryEntries(getRouteHistory())
