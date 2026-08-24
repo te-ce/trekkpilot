@@ -71,9 +71,11 @@ Node 24 and pnpm (developed against pnpm 11; CI runs Node 24).
 pnpm install
 ```
 
-You need an OpenRouteService API key — the free tier is enough. Sign up at
-[openrouteservice.org](https://openrouteservice.org/dev/#/signup) and put the
-key in a `.env` file in the repo root:
+You need an OpenRouteService API key — the free tier is enough. Create an
+account from the [ORS developer login](https://openrouteservice.org/dev/#/login),
+then generate a token on the [dashboard](https://openrouteservice.org/dev/#/home)
+(ORS accounts are managed through HeiGIT Account, so the login may hand you off
+to `account.heigit.org`). Put the token in a `.env` file in the repo root:
 
 ```bash
 echo 'ORS_API_KEY=your-key-here' > .env
