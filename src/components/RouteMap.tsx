@@ -1,5 +1,6 @@
 import 'leaflet/dist/leaflet.css'
 
+import L from 'leaflet'
 import { useEffect, useMemo } from 'react'
 import {
   CircleMarker,
@@ -45,6 +46,29 @@ const INACTIVE_PATH_OPTIONS = { weight: 3, opacity: 0.45 } as const
 
 /** Padding (px) kept around the fitted routes so polylines aren't flush to the edge. */
 const FIT_PADDING: [number, number] = [24, 24]
+
+const START_PIN_SIZE: [number, number] = [28, 40]
+
+/**
+ * The start pin, drawn as inline SVG rather than an image.
+ *
+ * Leaflet's default `L.Icon.Default` asks for `marker-icon.png` at a URL it
+ * derives from wherever it thinks `leaflet.css` lives. Under a bundler that CSS
+ * is concatenated into a fingerprinted stylesheet and the PNGs are never
+ * emitted at all, so the request 404s and the marker renders as a broken image.
+ * Owning the artwork removes that asset-path guesswork entirely.
+ *
+ * Literal hex, not `var(--color-moss)`, for the same reason `ROUTE_COLORS` is:
+ * the OSM tiles stay light in either scheme, so the pin must too. The white
+ * outline keeps it legible over dark tile detail like forest or water.
+ */
+const START_PIN_ICON = L.divIcon({
+  className: '',
+  html: `<svg xmlns="http://www.w3.org/2000/svg" width="${START_PIN_SIZE[0]}" height="${START_PIN_SIZE[1]}" viewBox="0 0 28 40" aria-hidden="true"><path d="M14 1.5c-6.9 0-12.5 5.6-12.5 12.5 0 8.6 10.2 20.4 11.6 22 .5.5 1.3.5 1.8 0 1.4-1.6 11.6-13.4 11.6-22C26.5 7.1 20.9 1.5 14 1.5Z" fill="#0b6e4f" stroke="#ffffff" stroke-width="2.5"/><circle cx="14" cy="14" r="4.5" fill="#ffffff"/></svg>`,
+  iconSize: START_PIN_SIZE,
+  // Bottom-centre: the pin's tip, not its middle, marks the coordinate.
+  iconAnchor: [START_PIN_SIZE[0] / 2, START_PIN_SIZE[1]],
+})
 
 /** Translates Leaflet map clicks into the app's `{ lat, lon }` vocabulary. */
 function MapClickHandler({
@@ -163,7 +187,14 @@ export function RouteMap({
           }}
         />
       ))}
-      {start && <Marker position={start} />}
+      {start && (
+        <Marker
+          position={start}
+          icon={START_PIN_ICON}
+          // `alt` only reaches image icons; `title` names the div-based one.
+          title="Start point"
+        />
+      )}
       {livePosition && (
         <CircleMarker
           center={livePosition}

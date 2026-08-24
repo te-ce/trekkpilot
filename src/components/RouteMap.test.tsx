@@ -44,10 +44,15 @@ vi.mock('react-leaflet', () => ({
       data-opacity={props.pathOptions?.opacity}
     />
   ),
-  Marker: (props: { position: [number, number] }) => (
+  Marker: (props: { position: [number, number]; icon?: L.Icon }) => (
     <div
       data-testid="start-marker"
       data-position={JSON.stringify(props.position)}
+      // Leaflet resolves its default icon's PNGs through a relative URL, which
+      // no bundler emits — so the icon options are worth asserting on.
+      data-icon-options={
+        props.icon ? JSON.stringify(props.icon.options) : undefined
+      }
     />
   ),
   CircleMarker: (props: { center: [number, number] }) => (
@@ -172,6 +177,35 @@ describe('RouteMap', () => {
       'data-position',
       JSON.stringify(START),
     )
+  })
+
+  it('gives the start marker a self-contained icon instead of Leaflet’s default', () => {
+    render(<RouteMap start={START} routes={[]} />)
+
+    const options = JSON.parse(
+      screen.getByTestId('start-marker').getAttribute('data-icon-options') ??
+        'null',
+    )
+
+    // Leaflet's default icon resolves `marker-icon.png` relative to the page,
+    // which bundlers never emit — the pin must carry its own artwork instead.
+    expect(options).not.toBeNull()
+    expect(options.iconUrl).toBeUndefined()
+    expect(options.html).toContain('<svg')
+  })
+
+  it('anchors the start pin by its tip, so it sits on the coordinate', () => {
+    render(<RouteMap start={START} routes={[]} />)
+
+    const options = JSON.parse(
+      screen.getByTestId('start-marker').getAttribute('data-icon-options') ??
+        'null',
+    )
+    const [width, height] = options.iconSize
+    const [anchorX, anchorY] = options.iconAnchor
+
+    expect(anchorX).toBe(width / 2)
+    expect(anchorY).toBe(height)
   })
 
   it('does not render a live position marker when no live position is given', () => {
