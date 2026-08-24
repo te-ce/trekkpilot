@@ -109,7 +109,7 @@ export type AlternativeRoutesRequest = {
   }
 }
 
-const ALTERNATIVE_ROUTES_TARGET_COUNT = 3
+const ALTERNATIVE_ROUTES_TARGET_COUNT = 5
 
 /**
  * Builds a directions request between two fixed points asking ORS for
@@ -234,12 +234,12 @@ export type LoopRouteCandidate = LoopRouteResult & {
 /**
  * Seeds passed to ORS's `options.round_trip.seed` to force distinct loops
  * for the same start point and target distance. The number of seeds is the
- * number of candidates fetched; the top 3 by score are returned to the
- * caller. Arbitrary but fixed for reproducibility.
+ * number of candidates fetched; all are scored and returned to the caller
+ * (sorted best-first), letting the client show a few and reveal the rest on
+ * demand ("load more") without a second ORS call. Arbitrary but fixed for
+ * reproducibility.
  */
 const CANDIDATE_SEEDS = [1, 2, 3, 4, 5]
-
-const TOP_CANDIDATE_COUNT = 3
 
 type OrsFeature = {
   geometry: { coordinates: [number, number, number?][] }
@@ -297,7 +297,7 @@ function featureToCandidate(
  * Fetches several round-trip loop candidates from ORS for the same start
  * point and target duration (varying `options.round_trip.seed` per call so
  * ORS generates distinct loops), scores each one via the weighted-sum
- * formula in scoring.ts, and returns the top 3 sorted best-first.
+ * formula in scoring.ts, and returns all of them sorted best-first.
  */
 export async function fetchLoopRouteCandidates({
   activity,
@@ -329,9 +329,7 @@ export async function fetchLoopRouteCandidates({
     }),
   )
 
-  return candidates
-    .sort((a, b) => b.score - a.score)
-    .slice(0, TOP_CANDIDATE_COUNT)
+  return candidates.sort((a, b) => b.score - a.score)
 }
 
 export type PointToPointRouteInput = {
@@ -356,7 +354,7 @@ export type PointToPointRouteCandidate = LoopRouteCandidate
 /**
  * Fetches alternative routes from ORS between two fixed points
  * (point-to-point mode, issue 004), scores each one via the same
- * weighted-sum formula used for loop candidates, and returns up to the top 3
+ * weighted-sum formula used for loop candidates, and returns all of them
  * sorted best-first. Unlike fetchLoopRouteCandidates, this needs only a
  * single ORS call since `alternative_routes` returns several distinct routes
  * per request.
@@ -381,5 +379,4 @@ export async function fetchPointToPointRouteCandidates({
   return geojson.features
     .map((feature) => featureToCandidate(feature, elevationMetric))
     .sort((a, b) => b.score - a.score)
-    .slice(0, TOP_CANDIDATE_COUNT)
 }

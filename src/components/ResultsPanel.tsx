@@ -1,5 +1,9 @@
 import { CandidateRow } from '#/components/CandidateRow'
-import { MICRO_LABEL_CLASS, SELECT_CLASS } from '#/lib/controlStyles'
+import {
+  MICRO_LABEL_CLASS,
+  SECONDARY_BUTTON_CLASS,
+  SELECT_CLASS,
+} from '#/lib/controlStyles'
 import { ELEVATION_METRIC_LABELS } from '#/lib/labels'
 import { ROUTE_COLORS, type RankBy, type RankedCandidate } from '#/lib/ranking'
 import type { RouteMode } from '#/lib/routeMode'
@@ -22,14 +26,17 @@ function isElevationMetric(value: string): value is ElevationMetricType {
 }
 
 /**
- * The three routes the search came back with, plus the two controls that
- * change how they read: what to optimise for, and which elevation signal to
- * judge climbs by (issue 003). Both re-sort the same three candidates on the
- * client — no refetch.
+ * The routes the search came back with so far (a "load more" button reveals
+ * the rest of the fetched pool), plus the two controls that change how they
+ * read: what to optimise for, and which elevation signal to judge climbs by
+ * (issue 003). Both re-sort the same visible candidates on the client — no
+ * refetch.
  */
 export function ResultsPanel({
   mode,
   ranked,
+  totalCount,
+  onLoadMore,
   rankBy,
   onRankByChange,
   elevationMetric,
@@ -38,7 +45,11 @@ export function ResultsPanel({
   onSelect,
 }: {
   mode: RouteMode
+  /** Currently-visible candidates, already sliced to the revealed count. */
   ranked: RankedCandidate[]
+  /** Size of the full fetched pool, including candidates not yet revealed. */
+  totalCount: number
+  onLoadMore: () => void
   rankBy: RankBy
   onRankByChange: (rankBy: RankBy) => void
   elevationMetric: ElevationMetricType
@@ -47,12 +58,15 @@ export function ResultsPanel({
   selectedIndex: number | null
   onSelect: (originalIndex: number) => void
 }) {
+  const hasMore = ranked.length < totalCount
+  const noun = mode === 'loop' ? 'loops from here' : 'routes to your stop'
+
   return (
     <div className="space-y-3">
       <h2 className="text-ink text-lg font-semibold">
-        {mode === 'loop'
-          ? `${ranked.length} loops from here`
-          : `${ranked.length} routes to your stop`}
+        {hasMore
+          ? `Showing ${ranked.length} of ${totalCount} ${noun}`
+          : `${ranked.length} ${noun}`}
       </h2>
 
       <div className="flex gap-2">
@@ -115,6 +129,16 @@ export function ResultsPanel({
           />
         ))}
       </ul>
+
+      {hasMore && (
+        <button
+          type="button"
+          className={SECONDARY_BUTTON_CLASS}
+          onClick={onLoadMore}
+        >
+          Load more routes
+        </button>
+      )}
     </div>
   )
 }

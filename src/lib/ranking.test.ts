@@ -267,8 +267,14 @@ describe('rankCandidates reasons', () => {
 })
 
 describe('ROUTE_COLORS', () => {
-  it('is the three-color moss / slate blue / ochre palette', () => {
-    expect([...ROUTE_COLORS]).toEqual(['#0B6E4F', '#2F6690', '#A9700F'])
+  it('is the five-color moss / slate blue / ochre / plum / terracotta palette', () => {
+    expect([...ROUTE_COLORS]).toEqual([
+      '#0B6E4F',
+      '#2F6690',
+      '#A9700F',
+      '#7B4B94',
+      '#B5502E',
+    ])
   })
 
   it('keeps a candidate on the same color when the ranking changes', () => {

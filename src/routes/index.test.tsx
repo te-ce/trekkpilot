@@ -330,6 +330,45 @@ describe('Home', () => {
     },
   ]
 
+  const extraCandidates: LoopRouteCandidate[] = [
+    {
+      coordinates: [
+        [52.52, 13.405],
+        [52.523, 13.408],
+        [52.52, 13.405],
+      ],
+      distanceMeters: 15_100,
+      durationSeconds: 3_620,
+      metrics: {
+        ascentMeters: 90,
+        netElevationChangeMeters: 20,
+        maxGradientPercent: 5,
+        turnCount: 7,
+        pathTypeRatio: 0.5,
+        constructionPenalty: 0,
+      },
+      score: 12,
+    },
+    {
+      coordinates: [
+        [52.52, 13.405],
+        [52.517, 13.402],
+        [52.52, 13.405],
+      ],
+      distanceMeters: 15_200,
+      durationSeconds: 3_630,
+      metrics: {
+        ascentMeters: 150,
+        netElevationChangeMeters: 25,
+        maxGradientPercent: 7,
+        turnCount: 9,
+        pathTypeRatio: 0.3,
+        constructionPenalty: 0,
+      },
+      score: 3,
+    },
+  ]
+
   /** Sets a start point and runs the search, resolving into the results state. */
   async function findRoutes() {
     tapMap()
@@ -447,8 +486,51 @@ describe('Home', () => {
     expect(drawnRoutes().map((route) => route.coordinates)).toEqual(
       sampleCandidates.map((candidate) => candidate.coordinates),
     )
-    expect(drawnRoutes().map((route) => route.color)).toEqual([...ROUTE_COLORS])
+    expect(drawnRoutes().map((route) => route.color)).toEqual(
+      ROUTE_COLORS.slice(0, 3),
+    )
     expect(drawnRoutes().every((route) => !route.isActive)).toBe(true)
+  })
+
+  it('reveals the rest of the fetched pool when "Load more" is tapped', async () => {
+    getLoopRouteMock.mockResolvedValue([
+      ...sampleCandidates,
+      ...extraCandidates,
+    ])
+
+    render(<Home />)
+    await findRoutes()
+
+    expect(screen.getByText(/showing 3 of 5/i)).toBeInTheDocument()
+    expect(drawnRoutes()).toHaveLength(3)
+
+    fireEvent.click(screen.getByRole('button', { name: /load more/i }))
+
+    expect(screen.getAllByTestId('candidate-row')).toHaveLength(5)
+    expect(drawnRoutes()).toHaveLength(5)
+    expect(
+      screen.queryByRole('button', { name: /load more/i }),
+    ).not.toBeInTheDocument()
+    expect(getLoopRouteMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('starts a new search collapsed to the initial count again', async () => {
+    getLoopRouteMock.mockResolvedValue([
+      ...sampleCandidates,
+      ...extraCandidates,
+    ])
+
+    render(<Home />)
+    await findRoutes()
+    fireEvent.click(screen.getByRole('button', { name: /load more/i }))
+    expect(screen.getAllByTestId('candidate-row')).toHaveLength(5)
+
+    fireEvent.click(screen.getByRole('button', { name: /cycling · 1 h/i }))
+    fireEvent.click(screen.getByRole('button', { name: /find 3 routes/i }))
+
+    await waitFor(() =>
+      expect(screen.getAllByTestId('candidate-row')).toHaveLength(3),
+    )
   })
 
   it('leads each row with the distance and the time it takes', async () => {

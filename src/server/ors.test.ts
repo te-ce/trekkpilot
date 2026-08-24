@@ -244,7 +244,7 @@ describe('fetchLoopRouteCandidates', () => {
     expect(top?.score).toBeCloseTo(30 * -0.05 + 3 * -0.5 + 0.4 * 50)
   })
 
-  it('returns only the top 3 candidates, sorted best score first', async () => {
+  it('returns all scored candidates, sorted best score first', async () => {
     vi.stubEnv('ORS_API_KEY', 'secret-key')
     const responses = [
       orsFeature({ steps: [{}, {}, {}, {}, {}] }), // worst: many turns
@@ -268,7 +268,7 @@ describe('fetchLoopRouteCandidates', () => {
       durationMinutes: 60,
     })
 
-    expect(candidates).toHaveLength(3)
+    expect(candidates).toHaveLength(5)
     const scores = candidates.map((candidate) => candidate.score)
     expect(scores).toEqual([...scores].sort((a, b) => b - a))
     // Best candidate corresponds to the response with the fewest turn steps.
@@ -322,7 +322,7 @@ describe('buildAlternativeRoutesRequest', () => {
       elevation: true,
       extra_info: ['waytype'],
       alternative_routes: {
-        target_count: 3,
+        target_count: 5,
         share_factor: 0.6,
         weight_factor: 1.4,
       },
@@ -385,7 +385,7 @@ describe('fetchPointToPointRouteCandidates', () => {
       [13.405, 52.52],
       [13.42, 52.53],
     ])
-    expect(body.alternative_routes.target_count).toBe(3)
+    expect(body.alternative_routes.target_count).toBe(5)
   })
 
   it('scores each alternative using the same weighted-sum formula as loop candidates', async () => {
@@ -414,13 +414,13 @@ describe('fetchPointToPointRouteCandidates', () => {
     expect(top?.score).toBeCloseTo(10 * -0.05 + 2 * -0.5 + 0.8 * 50)
   })
 
-  it('returns at most the top 3 alternatives, sorted best score first', async () => {
+  it('returns every alternative ORS provides, sorted best score first', async () => {
     vi.stubEnv('ORS_API_KEY', 'secret-key')
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue({
         ok: true,
-        json: () => Promise.resolve(orsAlternativesResponse({ count: 3 })),
+        json: () => Promise.resolve(orsAlternativesResponse({ count: 5 })),
       }),
     )
 
@@ -430,7 +430,7 @@ describe('fetchPointToPointRouteCandidates', () => {
       stop: { lat: 52.53, lon: 13.42 },
     })
 
-    expect(candidates.length).toBeLessThanOrEqual(3)
+    expect(candidates).toHaveLength(5)
     const scores = candidates.map((candidate) => candidate.score)
     expect(scores).toEqual([...scores].sort((a, b) => b - a))
   })

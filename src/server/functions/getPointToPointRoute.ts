@@ -72,9 +72,9 @@ export function validatePointToPointRouteInput(
 }
 
 /**
- * Returns the top (up to 3) scored point-to-point route alternatives between
- * a fixed start and stop point (see fetchPointToPointRouteCandidates /
- * scoring.ts). This is the serverless boundary — the ORS API key never
+ * Returns the scored point-to-point route alternatives, sorted best-first,
+ * between a fixed start and stop point (see fetchPointToPointRouteCandidates
+ * / scoring.ts). This is the serverless boundary — the ORS API key never
  * reaches the client. Return-trip routing is explicitly out of scope (issue
  * 004) — only the outbound leg is fetched.
  */

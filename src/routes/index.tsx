@@ -35,6 +35,9 @@ import type { ElevationMetricType } from '#/server/scoring'
 
 export const Route = createFileRoute('/')({ component: Home })
 
+/** How many candidates are shown before the reader taps "Load more". */
+const INITIAL_VISIBLE_COUNT = 3
+
 /** Labels the sheet by what it is currently showing. */
 const SHEET_LABELS = {
   plan: 'Plan your route',
@@ -61,12 +64,14 @@ function jumpToProp(
 }
 
 /**
- * What the map draws: every fetched candidate at once, each keeping the colour
- * its position in the fetched set gave it, so a re-rank never swaps colours out
- * from under the reader. A reopened history entry is a set of one.
+ * What the map draws: every currently-visible candidate (those revealed so far
+ * via "load more"), each keeping the colour its position in the fetched set
+ * gave it, so a re-rank or a later reveal never swaps colours out from under
+ * the reader. A reopened history entry is a set of one.
  */
 function buildRoutePolylines(
   candidates: LoopRouteCandidate[],
+  visibleOriginalIndices: Set<number>,
   selectedIndex: number | null,
   historyEntry: HistoryEntry | null,
 ): RoutePolyline[] {
@@ -80,12 +85,15 @@ function buildRoutePolylines(
       },
     ]
   }
-  return candidates.map((candidate, index) => ({
-    id: `candidate-${index}`,
-    coordinates: candidate.coordinates,
-    color: ROUTE_COLORS[index % ROUTE_COLORS.length] ?? '',
-    isActive: index === selectedIndex,
-  }))
+  return candidates
+    .map((candidate, index) => ({ candidate, index }))
+    .filter(({ index }) => visibleOriginalIndices.has(index))
+    .map(({ candidate, index }) => ({
+      id: `candidate-${index}`,
+      coordinates: candidate.coordinates,
+      color: ROUTE_COLORS[index % ROUTE_COLORS.length] ?? '',
+      isActive: index === selectedIndex,
+    }))
 }
 
 /**
@@ -136,6 +144,7 @@ export function Home() {
   const [stop, setStop] = useState<GeoPoint | null>(null)
   const [stopLabel, setStopLabel] = useState<string | null>(null)
   const [candidates, setCandidates] = useState<LoopRouteCandidate[]>([])
+  const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE_COUNT)
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
   const [historyEntries, setHistoryEntries] = useState<HistoryEntry[]>([])
   const [activeHistoryEntry, setActiveHistoryEntry] =
@@ -156,6 +165,10 @@ export function Home() {
   }
 
   const ranked = rankCandidates(candidates, rankBy, elevationMetric)
+  const visibleRanked = ranked.slice(0, visibleCount)
+  const visibleOriginalIndices = new Set(
+    visibleRanked.map((entry) => entry.originalIndex),
+  )
   const activeRoute = computeActiveRoute(
     candidates,
     ranked,
@@ -266,10 +279,11 @@ export function Home() {
   }
 
   /**
-   * Fetches candidates. The server fetches 5 route options and keeps the top 3
-   * by score, using this same `elevationMetric` for the elevation term; the
-   * client then re-ranks those 3 (see `rankCandidates`) without refetching, so
-   * changing the ranking or the elevation metric afterwards costs nothing.
+   * Fetches candidates. The server scores and sorts the full candidate pool
+   * (up to 5), using this same `elevationMetric` for the elevation term; the
+   * client shows the first few and re-ranks whatever is visible (see
+   * `rankCandidates`) without refetching, so changing the ranking, the
+   * elevation metric, or revealing more candidates afterwards costs nothing.
    */
   async function handleGetRoute() {
     if (!start) {
@@ -285,6 +299,7 @@ export function Home() {
     setError(null)
     setSelectedIndex(null)
     setActiveHistoryEntry(null)
+    setVisibleCount(INITIAL_VISIBLE_COUNT)
     try {
       const result =
         mode === 'pointToPoint' && stop
@@ -303,6 +318,11 @@ export function Home() {
     }
   }
 
+  /** Reveals the rest of the fetched candidate pool; nothing left to fetch. */
+  function handleLoadMore() {
+    setVisibleCount(candidates.length)
+  }
+
   function sheetContent() {
     switch (sheetState) {
       case 'loading':
@@ -319,7 +339,9 @@ export function Home() {
         return (
           <ResultsPanel
             mode={mode}
-            ranked={ranked}
+            ranked={visibleRanked}
+            totalCount={candidates.length}
+            onLoadMore={handleLoadMore}
             rankBy={rankBy}
             onRankByChange={setRankBy}
             elevationMetric={elevationMetric}
@@ -385,6 +407,7 @@ export function Home() {
           start={pinnedStart ? [pinnedStart.lat, pinnedStart.lon] : null}
           routes={buildRoutePolylines(
             candidates,
+            visibleOriginalIndices,
             selectedIndex,
             activeHistoryEntry,
           )}

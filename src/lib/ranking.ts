@@ -23,14 +23,21 @@ export type RankedCandidate = {
 }
 
 /**
- * Per-route polyline colors: moss, slate blue, ochre.
+ * Per-route polyline colors: moss, slate blue, ochre, plum, terracotta.
  *
  * Literal hex rather than CSS variables because Leaflet polylines take literal
  * colors, and the OSM tile layer stays light regardless of the app theme.
  * Index by `originalIndex % ROUTE_COLORS.length` so a candidate keeps the same
- * color when the ranking changes.
+ * color when the ranking changes. Sized to match the candidate pool (up to 5)
+ * so colors don't repeat when "load more" reveals the rest.
  */
-export const ROUTE_COLORS: readonly string[] = ['#0B6E4F', '#2F6690', '#A9700F']
+export const ROUTE_COLORS: readonly string[] = [
+  '#0B6E4F',
+  '#2F6690',
+  '#A9700F',
+  '#7B4B94',
+  '#B5502E',
+]
 
 /**
  * The sort key for each ranking mode, plus whether bigger is better. Reusing
@@ -159,8 +166,9 @@ function buildReason(
  * `elevationMetric` (issue 003) selects which elevation signal feeds the
  * elevation term of the 'balanced' score; the other modes sort on a single
  * explicit measure and ignore it. Note the split of responsibility: the server
- * already used this metric to cut the 5 fetched loops down to the top 3, and
- * this function re-ranks those same 3 on the client without refetching.
+ * scores and sorts the full candidate pool, and this function re-ranks
+ * whichever candidates the client currently has on the client without
+ * refetching.
  */
 export function rankCandidates(
   candidates: LoopRouteCandidate[],
