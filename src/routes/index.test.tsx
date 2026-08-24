@@ -94,6 +94,15 @@ function tapMap() {
   fireEvent.click(screen.getByRole('button', { name: /tap the map/i }))
 }
 
+/** The free-form minutes field in the plan. */
+function durationField(): HTMLElement {
+  return screen.getByRole('spinbutton', { name: /duration/i })
+}
+
+function typeDuration(value: string) {
+  fireEvent.change(durationField(), { target: { value } })
+}
+
 describe('Home', () => {
   afterEach(() => {
     getLoopRouteMock.mockReset()
@@ -127,19 +136,23 @@ describe('Home', () => {
     expect(screen.getByTestId('route-map')).toBeInTheDocument()
     expect(screen.getByRole('radio', { name: /loop/i })).toBeChecked()
     expect(screen.getByRole('radio', { name: /cycling/i })).toBeChecked()
-    expect(screen.getByRole('radio', { name: '1 h' })).toBeChecked()
+    expect(durationField()).toHaveValue(60)
   })
 
-  it('shows the target distance the chosen duration works out to', () => {
+  it('shows the target distance the typed duration works out to', () => {
     render(<Home />)
 
     expect(screen.getByText(/≈ 15\.0 km at 15 km\/h/)).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('radio', { name: '1 h 30' }))
+    typeDuration('90')
     expect(screen.getByText(/≈ 22\.5 km at 15 km\/h/)).toBeInTheDocument()
 
+    // An arbitrary number, which no preset ever offered.
+    typeDuration('47')
+    expect(screen.getByText(/≈ 11\.8 km at 15 km\/h/)).toBeInTheDocument()
+
     fireEvent.click(screen.getByRole('radio', { name: /trekking/i }))
-    expect(screen.getByText(/≈ 6\.8 km at 4\.5 km\/h/)).toBeInTheDocument()
+    expect(screen.getByText(/≈ 3\.5 km at 4\.5 km\/h/)).toBeInTheDocument()
   })
 
   it('summarises the plan in a pill that reopens the plan editor', () => {
@@ -147,6 +160,12 @@ describe('Home', () => {
 
     expect(
       screen.getByRole('button', { name: /cycling · 1 h/i }),
+    ).toBeInTheDocument()
+
+    // An arbitrary duration still reads as time, not as a raw minute count.
+    typeDuration('107')
+    expect(
+      screen.getByRole('button', { name: /cycling · 1 h 47/i }),
     ).toBeInTheDocument()
   })
 
@@ -246,7 +265,7 @@ describe('Home', () => {
     expect(
       screen.getByRole('group', { name: /stop point/i }),
     ).toBeInTheDocument()
-    expect(screen.queryByRole('radio', { name: '1 h' })).toBeNull()
+    expect(screen.queryByRole('spinbutton', { name: /duration/i })).toBeNull()
   })
 
   it('starts with no routes drawn on the map', () => {
@@ -331,6 +350,68 @@ describe('Home', () => {
         activity: 'cycling',
         start: MAP_TAP_POINT,
         durationMinutes: 60,
+        elevationMetric: 'ascent',
+      },
+    })
+  })
+
+  it('searches for an arbitrary duration, not just a round one', async () => {
+    getLoopRouteMock.mockResolvedValue(sampleCandidates)
+
+    render(<Home />)
+    typeDuration('47')
+    await findRoutes()
+
+    expect(getLoopRouteMock).toHaveBeenCalledWith({
+      data: {
+        activity: 'cycling',
+        start: MAP_TAP_POINT,
+        durationMinutes: 47,
+        elevationMetric: 'ascent',
+      },
+    })
+  })
+
+  it.each([
+    ['', /how many minutes/i],
+    ['0', /more than 0 minutes/i],
+    ['-30', /more than 0 minutes/i],
+    ['4000', /480 minutes/i],
+  ])(
+    'refuses to search on a duration of "%s" and says why',
+    (value, message) => {
+      render(<Home />)
+      tapMap()
+      typeDuration(value)
+      fireEvent.click(screen.getByRole('button', { name: /find 3 routes/i }))
+
+      expect(screen.getByText(message)).toBeInTheDocument()
+      expect(durationField()).toHaveAttribute('aria-invalid', 'true')
+      expect(getLoopRouteMock).not.toHaveBeenCalled()
+    },
+  )
+
+  it('drops the message and searches once the duration is fixed', async () => {
+    getLoopRouteMock.mockResolvedValue(sampleCandidates)
+
+    render(<Home />)
+    tapMap()
+    typeDuration('0')
+    fireEvent.click(screen.getByRole('button', { name: /find 3 routes/i }))
+    expect(screen.getByText(/more than 0 minutes/i)).toBeInTheDocument()
+
+    typeDuration('75')
+    expect(screen.queryByText(/more than 0 minutes/i)).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: /find 3 routes/i }))
+    await waitFor(() =>
+      expect(screen.getAllByTestId('candidate-row').length).toBe(3),
+    )
+    expect(getLoopRouteMock).toHaveBeenCalledWith({
+      data: {
+        activity: 'cycling',
+        start: MAP_TAP_POINT,
+        durationMinutes: 75,
         elevationMetric: 'ascent',
       },
     })

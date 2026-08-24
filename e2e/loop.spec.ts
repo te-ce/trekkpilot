@@ -47,6 +47,46 @@ test('a loop search offers three candidates with distance and time @smoke', asyn
   await expect(rows.nth(2)).toContainText('50 min')
 })
 
+/**
+ * The duration is a free-form number of minutes, so the value a person can
+ * search for is not limited to a handful of presets. 47 minutes is deliberately
+ * not a round number: the derived distance has to follow it, and the search has
+ * to run on it.
+ */
+test('an arbitrary duration is searchable @smoke', async ({ page }) => {
+  await page.goto('/')
+
+  const duration = page.getByLabel(/duration/i)
+  await expect(duration).toHaveValue('60')
+
+  await duration.fill('47')
+  await expect(page.getByText('≈ 11.8 km at 15 km/h')).toBeVisible()
+
+  await page.getByRole('button', { name: /use my current location/i }).click()
+  await page.getByRole('button', { name: /find 3 routes/i }).click()
+
+  await expect(page.getByTestId('candidate-row')).toHaveCount(3)
+  // And the plan pill words those 47 minutes as time, not as a minute count.
+  await expect(
+    page.getByRole('button', { name: /Cycling · 47 min/ }),
+  ).toBeVisible()
+})
+
+test('a duration of zero is refused instead of searched', async ({ page }) => {
+  await page.goto('/')
+
+  await page.getByRole('button', { name: /use my current location/i }).click()
+  await page.getByLabel(/duration/i).fill('0')
+  await page.getByRole('button', { name: /find 3 routes/i }).click()
+
+  await expect(page.getByText(/more than 0 minutes/i)).toBeVisible()
+  await expect(page.getByTestId('candidate-row')).toHaveCount(0)
+
+  await page.getByLabel(/duration/i).fill('120')
+  await page.getByRole('button', { name: /find 3 routes/i }).click()
+  await expect(page.getByTestId('candidate-row')).toHaveCount(3)
+})
+
 test('the roadworks-heavy loop never reaches the list', async ({ page }) => {
   await searchLoopsFromCurrentPosition(page)
 

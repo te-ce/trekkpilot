@@ -3,7 +3,7 @@ import { MICRO_LABEL_CLASS } from '#/lib/controlStyles'
 export type SegmentedOption<T extends string> = { value: T; label: string }
 
 /**
- * A row of mutually exclusive choices — mode, activity, duration — as real
+ * A row of mutually exclusive choices — shape, activity — as real
  * radios behind chip styling, so keyboard and screen-reader users get the
  * grouping and arrow-key behaviour for free.
  */

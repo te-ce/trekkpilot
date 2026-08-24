@@ -12,6 +12,7 @@ import { ResultsPanel } from '#/components/ResultsPanel'
 import type { MapJumpRequest, RoutePolyline } from '#/components/RouteMap'
 import { TopPillBar } from '#/components/TopPillBar'
 import type { ActivityType } from '#/lib/activity'
+import { DEFAULT_DURATION_MINUTES } from '#/lib/duration'
 import {
   rankCandidates,
   ROUTE_COLORS,
@@ -124,7 +125,9 @@ function computeActiveRoute(
 export function Home() {
   const [mode, setMode] = useState<RouteMode>('loop')
   const [activity, setActivity] = useState<ActivityType>('cycling')
-  const [durationMinutes, setDurationMinutes] = useState(60)
+  const [durationMinutes, setDurationMinutes] = useState(
+    DEFAULT_DURATION_MINUTES,
+  )
   const [elevationMetric, setElevationMetric] =
     useState<ElevationMetricType>('ascent')
   const [rankBy, setRankBy] = useState<RankBy>('balanced')

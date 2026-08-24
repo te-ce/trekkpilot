@@ -1,22 +1,13 @@
+import { useState } from 'react'
+
 import { LocationPicker, type GeoPoint } from '#/components/LocationPicker'
+import { DurationField } from '#/components/DurationField'
 import { SegmentedControl } from '#/components/SegmentedControl'
-import {
-  DEFAULT_SPEED_KMH,
-  targetDistanceMeters,
-  type ActivityType,
-} from '#/lib/activity'
+import type { ActivityType } from '#/lib/activity'
 import { PRIMARY_BUTTON_CLASS } from '#/lib/controlStyles'
-import { ACTIVITY_LABELS, formatDurationLabel } from '#/lib/labels'
-import { formatDistance } from '#/lib/ranking'
+import { parseDurationMinutes } from '#/lib/duration'
+import { ACTIVITY_LABELS } from '#/lib/labels'
 import type { RouteMode } from '#/lib/routeMode'
-
-/** The durations a person actually plans around, as chips. */
-const DURATION_PRESETS = [30, 60, 90, 120]
-
-const DURATION_OPTIONS = DURATION_PRESETS.map((minutes) => ({
-  value: String(minutes),
-  label: formatDurationLabel(minutes),
-}))
 
 const MODE_OPTIONS: { value: RouteMode; label: string }[] = [
   { value: 'loop', label: 'Loop' },
@@ -60,11 +51,40 @@ export function PlanPanel({
   onError: (message: string) => void
   onSubmit: () => void
 }) {
+  /**
+   * The duration lives here as the text the user typed, not as a number: an
+   * empty field or a half-typed value has no number to report upwards, and
+   * snapping it to one would fight the person doing the typing. The parent
+   * only hears about durations worth searching for.
+   */
+  const [draft, setDraft] = useState(String(durationMinutes))
+  const [submitAttempted, setSubmitAttempted] = useState(false)
+  const parsed = parseDurationMinutes(draft)
+  // Held back until a search is asked for, so the field doesn't scold anyone
+  // mid-keystroke — but once shown it tracks every further edit.
+  const durationError =
+    submitAttempted && 'error' in parsed ? parsed.error : null
+
+  function handleDurationChange(value: string) {
+    setDraft(value)
+    const next = parseDurationMinutes(value)
+    if ('minutes' in next) {
+      onDurationMinutesChange(next.minutes)
+    }
+  }
+
   return (
     <form
       className="space-y-4"
       onSubmit={(event) => {
         event.preventDefault()
+        // Point-to-point ignores the duration entirely, so a bad number there
+        // is not a reason to withhold a route.
+        if (mode === 'loop' && 'error' in parsed) {
+          setSubmitAttempted(true)
+          return
+        }
+        setSubmitAttempted(false)
         onSubmit()
       }}
     >
@@ -89,19 +109,13 @@ export function PlanPanel({
       />
 
       {mode === 'loop' && (
-        <div>
-          <SegmentedControl
-            label="Time out"
-            name="duration"
-            options={DURATION_OPTIONS}
-            value={String(durationMinutes)}
-            onChange={(value) => onDurationMinutesChange(Number(value))}
-          />
-          <p className="text-ink-3 mt-1.5 font-mono text-xs tabular-nums">
-            ≈ {formatDistance(targetDistanceMeters(activity, durationMinutes))}{' '}
-            at {DEFAULT_SPEED_KMH[activity]} km/h
-          </p>
-        </div>
+        <DurationField
+          draft={draft}
+          onDraftChange={handleDurationChange}
+          activity={activity}
+          minutes={'minutes' in parsed ? parsed.minutes : null}
+          error={durationError}
+        />
       )}
 
       <LocationPicker

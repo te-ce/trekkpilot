@@ -20,6 +20,11 @@ describe('formatDurationLabel', () => {
   it('words an hour and a half the way a person says it', () => {
     expect(formatDurationLabel(90)).toBe('1 h 30')
   })
+
+  it('stays readable for an arbitrary duration no preset offered', () => {
+    expect(formatDurationLabel(107)).toBe('1 h 47')
+    expect(formatDurationLabel(480)).toBe('8 h')
+  })
 })
 
 describe('formatCoordinates', () => {

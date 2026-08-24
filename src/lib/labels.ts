@@ -1,5 +1,5 @@
 /**
- * How the UI words things: durations on chips and pills, coordinates in the
+ * How the UI words things: durations on pills and rows, coordinates in the
  * start pill, and the label/value pair for whichever elevation metric the user
  * is reading routes by. Pure string work, kept out of the components so the
  * wording can be asserted directly.
@@ -11,8 +11,9 @@ import type { CandidateMetrics, ElevationMetricType } from '#/server/scoring'
 const MINUTES_PER_HOUR = 60
 
 /**
- * A duration the user chose, worded the way a person says it: "30 min",
- * "1 h", "1 h 30". Distinct from `formatDuration`, which words a *measured*
+ * A duration the user asked for, worded the way a person says it: "30 min",
+ * "1 h", "1 h 47" — which is what keeps an arbitrary number of minutes
+ * readable in the plan pill. Distinct from `formatDuration`, which words a *measured*
  * route duration in seconds and always spells out the minutes.
  */
 export function formatDurationLabel(minutes: number): string {
