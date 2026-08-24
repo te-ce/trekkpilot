@@ -4,11 +4,15 @@ import { useState } from 'react'
 import { RouteMap } from '#/components/RouteMap'
 import { isActivityType, type ActivityType } from '#/lib/activity'
 import { getLoopRoute } from '#/server/functions/getLoopRoute'
-import type { LoopRouteResult } from '#/server/ors'
+import type { LoopRouteCandidate } from '#/server/ors'
 
 export const Route = createFileRoute('/')({ component: Home })
 
 type StartPoint = { lat: number; lon: number }
+
+function formatRatio(ratio: number): string {
+  return `${Math.round(ratio * 100)}%`
+}
 
 export function Home() {
   const [activity, setActivity] = useState<ActivityType>('cycling')
@@ -16,7 +20,8 @@ export function Home() {
   const [manualLat, setManualLat] = useState('')
   const [manualLon, setManualLon] = useState('')
   const [start, setStart] = useState<StartPoint | null>(null)
-  const [route, setRoute] = useState<LoopRouteResult | null>(null)
+  const [candidates, setCandidates] = useState<LoopRouteCandidate[]>([])
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
 
@@ -53,11 +58,12 @@ export function Home() {
 
     setIsLoading(true)
     setError(null)
+    setSelectedIndex(null)
     try {
       const result = await getLoopRoute({
         data: { activity, start, durationMinutes },
       })
-      setRoute(result)
+      setCandidates(result)
     } catch {
       setError('Could not fetch a route. Please try again.')
     } finally {
@@ -138,11 +144,46 @@ export function Home() {
 
       {error && <p role="alert">{error}</p>}
 
-      {route && start && (
-        <RouteMap
-          start={[start.lat, start.lon]}
-          coordinates={route.coordinates}
-        />
+      {candidates.length > 0 && start && (
+        <section aria-label="Route candidates">
+          <h2>Top {candidates.length} route candidates</h2>
+          <ul>
+            {candidates.map((candidate, index) => (
+              <li key={index}>
+                <h3>Candidate {index + 1}</h3>
+                <RouteMap
+                  start={[start.lat, start.lon]}
+                  coordinates={candidate.coordinates}
+                />
+                <dl>
+                  <dt>Score</dt>
+                  <dd>{candidate.score.toFixed(1)}</dd>
+                  <dt>Ascent</dt>
+                  <dd>{Math.round(candidate.metrics.ascentMeters)} m</dd>
+                  <dt>Turns</dt>
+                  <dd>{candidate.metrics.turnCount}</dd>
+                  <dt>Dedicated cycleway/footway</dt>
+                  <dd>{formatRatio(candidate.metrics.pathTypeRatio)}</dd>
+                  <dt>Construction penalty</dt>
+                  <dd>{formatRatio(candidate.metrics.constructionPenalty)}</dd>
+                </dl>
+                <button type="button" onClick={() => setSelectedIndex(index)}>
+                  Use this route
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {selectedIndex !== null && start && candidates[selectedIndex] && (
+        <section aria-label="Active route" data-testid="active-route">
+          <h2>Active route: Candidate {selectedIndex + 1}</h2>
+          <RouteMap
+            start={[start.lat, start.lon]}
+            coordinates={candidates[selectedIndex].coordinates}
+          />
+        </section>
       )}
     </main>
   )

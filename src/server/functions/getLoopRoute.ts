@@ -2,7 +2,7 @@ import { createServerFn } from '@tanstack/react-start'
 
 import { isActivityType } from '#/lib/activity'
 import {
-  fetchLoopRoute,
+  fetchLoopRouteCandidates,
   type GeoPoint,
   type LoopRouteInput,
 } from '#/server/ors'
@@ -50,6 +50,11 @@ export function validateLoopRouteInput(input: unknown): LoopRouteInput {
   }
 }
 
+/**
+ * Returns the top 3 scored loop-route candidates for the given activity,
+ * start point and duration (see fetchLoopRouteCandidates / scoring.ts). This
+ * is the serverless boundary — the ORS API key never reaches the client.
+ */
 export const getLoopRoute = createServerFn({ method: 'POST' })
   .validator(validateLoopRouteInput)
-  .handler(async ({ data }) => fetchLoopRoute(data))
+  .handler(async ({ data }) => fetchLoopRouteCandidates(data))

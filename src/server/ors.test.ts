@@ -1,6 +1,43 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { buildRoundTripRequest, fetchLoopRoute } from './ors'
+import {
+  buildRoundTripRequest,
+  fetchLoopRoute,
+  fetchLoopRouteCandidates,
+} from './ors'
+
+function orsFeature({
+  coordinates = [
+    [13.405, 52.52, 30],
+    [13.41, 52.525, 35],
+    [13.405, 52.52, 30],
+  ],
+  distance = 15_200,
+  duration = 3_600,
+  steps = [{}, {}],
+  waytypeSummary,
+}: {
+  coordinates?: [number, number, number][]
+  distance?: number
+  duration?: number
+  steps?: unknown[]
+  waytypeSummary?: { value: number; distance: number; amount: number }[]
+} = {}) {
+  return {
+    features: [
+      {
+        geometry: { coordinates },
+        properties: {
+          summary: { distance, duration },
+          segments: [{ steps }],
+          ...(waytypeSummary
+            ? { extras: { waytype: { summary: waytypeSummary } } }
+            : {}),
+        },
+      },
+    ],
+  }
+}
 
 const sampleOrsResponse = {
   features: [
@@ -35,6 +72,8 @@ describe('buildRoundTripRequest', () => {
     )
     expect(request.body).toEqual({
       coordinates: [[13.405, 52.52]],
+      elevation: true,
+      extra_info: ['waytype'],
       options: {
         round_trip: {
           length: 15_000,
@@ -54,6 +93,129 @@ describe('buildRoundTripRequest', () => {
     expect(request.url).toBe(
       'https://api.openrouteservice.org/v2/directions/foot-walking/geojson',
     )
+  })
+
+  it('includes a seed in options.round_trip when one is given, to vary the generated loop', () => {
+    const request = buildRoundTripRequest({
+      activity: 'cycling',
+      start: { lat: 52.52, lon: 13.405 },
+      distanceMeters: 15_000,
+      seed: 42,
+    })
+
+    expect(request.body.options.round_trip.seed).toBe(42)
+  })
+
+  it('omits the seed field when none is given', () => {
+    const request = buildRoundTripRequest({
+      activity: 'cycling',
+      start: { lat: 52.52, lon: 13.405 },
+      distanceMeters: 15_000,
+    })
+
+    expect(request.body.options.round_trip.seed).toBeUndefined()
+  })
+})
+
+describe('fetchLoopRouteCandidates', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.unstubAllEnvs()
+  })
+
+  it('requests several round-trip candidates from ORS using distinct seeds', async () => {
+    vi.stubEnv('ORS_API_KEY', 'secret-key')
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(orsFeature()),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await fetchLoopRouteCandidates({
+      activity: 'cycling',
+      start: { lat: 52.52, lon: 13.405 },
+      durationMinutes: 60,
+    })
+
+    expect(fetchMock.mock.calls.length).toBeGreaterThan(1)
+
+    const seeds = fetchMock.mock.calls.map(
+      ([, init]) => JSON.parse(init.body).options.round_trip.seed,
+    )
+    expect(new Set(seeds).size).toBe(seeds.length)
+    expect(seeds.every((seed) => typeof seed === 'number')).toBe(true)
+  })
+
+  it('computes ascent, turn count and path-type ratio metrics per candidate from the ORS response', async () => {
+    vi.stubEnv('ORS_API_KEY', 'secret-key')
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: () =>
+          Promise.resolve(
+            orsFeature({
+              coordinates: [
+                [13.405, 52.52, 100],
+                [13.41, 52.525, 130],
+                [13.405, 52.52, 100],
+              ],
+              steps: [{}, {}, {}],
+              waytypeSummary: [
+                { value: 2, distance: 6_000, amount: 60 },
+                { value: 6, distance: 4_000, amount: 40 },
+              ],
+            }),
+          ),
+      }),
+    )
+
+    const candidates = await fetchLoopRouteCandidates({
+      activity: 'cycling',
+      start: { lat: 52.52, lon: 13.405 },
+      durationMinutes: 60,
+    })
+    const top = candidates[0]
+    expect(top).toBeDefined()
+
+    expect(top?.metrics).toEqual({
+      ascentMeters: 30,
+      turnCount: 3,
+      pathTypeRatio: 0.4,
+      constructionPenalty: 0,
+    })
+    expect(top?.score).toBeCloseTo(30 * -0.05 + 3 * -0.5 + 0.4 * 50)
+  })
+
+  it('returns only the top 3 candidates, sorted best score first', async () => {
+    vi.stubEnv('ORS_API_KEY', 'secret-key')
+    const responses = [
+      orsFeature({ steps: [{}, {}, {}, {}, {}] }), // worst: many turns
+      orsFeature({ steps: [{}] }), // best: fewest turns
+      orsFeature({ steps: [{}, {}] }),
+      orsFeature({ steps: [{}, {}, {}] }),
+      orsFeature({ steps: [{}, {}, {}, {}] }),
+    ]
+    const fetchMock = vi.fn()
+    for (const feature of responses) {
+      fetchMock.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve(feature),
+      })
+    }
+    vi.stubGlobal('fetch', fetchMock)
+
+    const candidates = await fetchLoopRouteCandidates({
+      activity: 'cycling',
+      start: { lat: 52.52, lon: 13.405 },
+      durationMinutes: 60,
+    })
+
+    expect(candidates).toHaveLength(3)
+    const scores = candidates.map((candidate) => candidate.score)
+    expect(scores).toEqual([...scores].sort((a, b) => b - a))
+    // Best candidate corresponds to the response with the fewest turn steps.
+    expect(candidates[0]?.metrics.turnCount).toBe(1)
   })
 })
 
@@ -99,12 +261,10 @@ describe('fetchLoopRoute', () => {
     vi.stubEnv('ORS_API_KEY', 'super-secret')
     vi.stubGlobal(
       'fetch',
-      vi
-        .fn()
-        .mockResolvedValue({
-          ok: true,
-          json: () => Promise.resolve(sampleOrsResponse),
-        }),
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve(sampleOrsResponse),
+      }),
     )
 
     const result = await fetchLoopRoute({
@@ -132,13 +292,11 @@ describe('fetchLoopRoute', () => {
     vi.stubEnv('ORS_API_KEY', 'secret-key')
     vi.stubGlobal(
       'fetch',
-      vi
-        .fn()
-        .mockResolvedValue({
-          ok: false,
-          status: 400,
-          text: () => Promise.resolve('bad request'),
-        }),
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 400,
+        text: () => Promise.resolve('bad request'),
+      }),
     )
 
     await expect(
