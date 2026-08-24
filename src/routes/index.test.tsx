@@ -38,6 +38,11 @@ vi.mock('#/server/functions/geocodeLocation', () => ({
   geocodeLocation: (...args: unknown[]) => geocodeLocationMock(...args),
 }))
 
+const downloadGpxMock = vi.fn()
+vi.mock('#/lib/gpx', () => ({
+  downloadGpx: (...args: unknown[]) => downloadGpxMock(...args),
+}))
+
 import { Home } from './index'
 
 describe('Home', () => {
@@ -45,6 +50,7 @@ describe('Home', () => {
     getLoopRouteMock.mockReset()
     getPointToPointRouteMock.mockReset()
     geocodeLocationMock.mockReset()
+    downloadGpxMock.mockReset()
     // Restore the harmless default stub from test-setup.ts so tests that
     // don't care about geolocation (but may still activate live tracking by
     // selecting a route) aren't left with a previous test's mock.
@@ -277,6 +283,28 @@ describe('Home', () => {
     expect(
       JSON.parse(activeMap.getAttribute('data-coordinates') ?? '[]'),
     ).toEqual(sampleCandidates[1]?.coordinates)
+  })
+
+  it('lets the user export the active route as a GPX file matching its exact coordinates', async () => {
+    getLoopRouteMock.mockResolvedValue(sampleCandidates)
+
+    render(<Home />)
+    await fetchCandidates()
+
+    fireEvent.click(
+      screen.getAllByRole('button', { name: /use this route/i })[1]!,
+    )
+
+    const activeSection = screen.getByTestId('active-route')
+    fireEvent.click(
+      within(activeSection).getByRole('button', { name: /export gpx/i }),
+    )
+
+    expect(downloadGpxMock).toHaveBeenCalledTimes(1)
+    expect(downloadGpxMock).toHaveBeenCalledWith(
+      { coordinates: sampleCandidates[1]?.coordinates },
+      expect.stringMatching(/\.gpx$/),
+    )
   })
 
   it('does not start live position tracking before a route is selected', async () => {

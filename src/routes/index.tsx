@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { LocationPicker, type GeoPoint } from '#/components/LocationPicker'
 import { RouteMap } from '#/components/RouteMap'
 import { isActivityType, type ActivityType } from '#/lib/activity'
+import { downloadGpx } from '#/lib/gpx'
 import { useLiveGeolocation } from '#/lib/useLiveGeolocation'
 import { getLoopRoute } from '#/server/functions/getLoopRoute'
 import { getPointToPointRoute } from '#/server/functions/getPointToPointRoute'
@@ -247,16 +248,35 @@ export function Home() {
         </section>
       )}
 
-      {selectedIndex !== null && start && candidates[selectedIndex] && (
-        <section aria-label="Active route" data-testid="active-route">
-          <h2>Active route: Candidate {selectedIndex + 1}</h2>
-          <RouteMap
-            start={[start.lat, start.lon]}
-            coordinates={candidates[selectedIndex].coordinates}
-            {...livePositionProp(livePosition)}
-          />
-        </section>
-      )}
+      {selectedIndex !== null &&
+        start &&
+        (() => {
+          const activeCandidate = candidates[selectedIndex]
+          if (!activeCandidate) {
+            return null
+          }
+          return (
+            <section aria-label="Active route" data-testid="active-route">
+              <h2>Active route: Candidate {selectedIndex + 1}</h2>
+              <RouteMap
+                start={[start.lat, start.lon]}
+                coordinates={activeCandidate.coordinates}
+                {...livePositionProp(livePosition)}
+              />
+              <button
+                type="button"
+                onClick={() =>
+                  downloadGpx(
+                    { coordinates: activeCandidate.coordinates },
+                    `trekkpilot-candidate-${selectedIndex + 1}.gpx`,
+                  )
+                }
+              >
+                Export GPX
+              </button>
+            </section>
+          )
+        })()}
     </main>
   )
 }
