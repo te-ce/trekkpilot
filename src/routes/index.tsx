@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { LocationPicker, type GeoPoint } from '#/components/LocationPicker'
 import { RouteMap } from '#/components/RouteMap'
 import { isActivityType, type ActivityType } from '#/lib/activity'
+import { buildGoogleMapsUrl } from '#/lib/googleMaps'
 import { downloadGpx } from '#/lib/gpx'
 import { useLiveGeolocation } from '#/lib/useLiveGeolocation'
 import { getLoopRoute } from '#/server/functions/getLoopRoute'
@@ -263,6 +264,12 @@ export function Home() {
                 coordinates={activeCandidate.coordinates}
                 {...livePositionProp(livePosition)}
               />
+              <p>
+                <strong>Exact route (GPX):</strong> reproduces the scored route
+                exactly. <strong>Approximate (Google Maps):</strong> Google Maps
+                recalculates directions through these points, so it may deviate
+                from the scored route.
+              </p>
               <button
                 type="button"
                 onClick={() =>
@@ -274,6 +281,13 @@ export function Home() {
               >
                 Export GPX
               </button>
+              <a
+                href={buildGoogleMapsUrl(activeCandidate.coordinates)}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Open in Google Maps
+              </a>
             </section>
           )
         })()}

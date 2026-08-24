@@ -43,6 +43,8 @@ vi.mock('#/lib/gpx', () => ({
   downloadGpx: (...args: unknown[]) => downloadGpxMock(...args),
 }))
 
+import { buildGoogleMapsUrl } from '#/lib/googleMaps'
+
 import { Home } from './index'
 
 describe('Home', () => {
@@ -304,6 +306,36 @@ describe('Home', () => {
     expect(downloadGpxMock).toHaveBeenCalledWith(
       { coordinates: sampleCandidates[1]?.coordinates },
       expect.stringMatching(/\.gpx$/),
+    )
+  })
+
+  it('labels the GPX export as the exact route and offers a Google Maps link labeled as approximate', async () => {
+    getLoopRouteMock.mockResolvedValue(sampleCandidates)
+
+    render(<Home />)
+    await fetchCandidates()
+
+    fireEvent.click(
+      screen.getAllByRole('button', { name: /use this route/i })[1]!,
+    )
+
+    const activeSection = screen.getByTestId('active-route')
+    expect(
+      within(activeSection).getByText(/exact route \(gpx\)/i),
+    ).toBeInTheDocument()
+    expect(
+      within(activeSection).getByText(/approximate \(google maps\)/i),
+    ).toBeInTheDocument()
+
+    const googleMapsLink = within(activeSection).getByRole('link', {
+      name: /open in google maps/i,
+    })
+    expect(googleMapsLink).toHaveAttribute('target', '_blank')
+    expect(googleMapsLink).toHaveAttribute('rel', 'noopener noreferrer')
+    expect(googleMapsLink.getAttribute('href')).toBe(
+      buildGoogleMapsUrl(
+        sampleCandidates[1]!.coordinates as [number, number][],
+      ),
     )
   })
 
