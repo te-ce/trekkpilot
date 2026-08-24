@@ -5,6 +5,7 @@ import { RouteMap } from '#/components/RouteMap'
 import { isActivityType, type ActivityType } from '#/lib/activity'
 import { getLoopRoute } from '#/server/functions/getLoopRoute'
 import type { LoopRouteCandidate } from '#/server/ors'
+import type { CandidateMetrics, ElevationMetricType } from '#/server/scoring'
 
 export const Route = createFileRoute('/')({ component: Home })
 
@@ -14,9 +15,39 @@ function formatRatio(ratio: number): string {
   return `${Math.round(ratio * 100)}%`
 }
 
+function isElevationMetricType(value: string): value is ElevationMetricType {
+  return value === 'ascent' || value === 'netChange' || value === 'maxGradient'
+}
+
+/** Label + formatted value for the currently-selected elevation metric, for candidate display. */
+function elevationMetricDisplay(
+  elevationMetric: ElevationMetricType,
+  metrics: CandidateMetrics,
+): { label: string; value: string } {
+  switch (elevationMetric) {
+    case 'netChange':
+      return {
+        label: 'Net elevation change',
+        value: `${Math.round(metrics.netElevationChangeMeters ?? 0)} m`,
+      }
+    case 'maxGradient':
+      return {
+        label: 'Max gradient',
+        value: `${(metrics.maxGradientPercent ?? 0).toFixed(1)}%`,
+      }
+    case 'ascent':
+      return {
+        label: 'Ascent',
+        value: `${Math.round(metrics.ascentMeters)} m`,
+      }
+  }
+}
+
 export function Home() {
   const [activity, setActivity] = useState<ActivityType>('cycling')
   const [durationMinutes, setDurationMinutes] = useState(60)
+  const [elevationMetric, setElevationMetric] =
+    useState<ElevationMetricType>('ascent')
   const [manualLat, setManualLat] = useState('')
   const [manualLon, setManualLon] = useState('')
   const [start, setStart] = useState<StartPoint | null>(null)
@@ -61,7 +92,7 @@ export function Home() {
     setSelectedIndex(null)
     try {
       const result = await getLoopRoute({
-        data: { activity, start, durationMinutes },
+        data: { activity, start, durationMinutes, elevationMetric },
       })
       setCandidates(result)
     } catch {
@@ -103,6 +134,21 @@ export function Home() {
           value={durationMinutes}
           onChange={(event) => setDurationMinutes(Number(event.target.value))}
         />
+
+        <label htmlFor="elevation-metric">Elevation metric</label>
+        <select
+          id="elevation-metric"
+          value={elevationMetric}
+          onChange={(event) => {
+            if (isElevationMetricType(event.target.value)) {
+              setElevationMetric(event.target.value)
+            }
+          }}
+        >
+          <option value="ascent">Total ascent</option>
+          <option value="netChange">Net elevation change</option>
+          <option value="maxGradient">Max gradient</option>
+        </select>
 
         <fieldset>
           <legend>Start point</legend>
@@ -158,8 +204,18 @@ export function Home() {
                 <dl>
                   <dt>Score</dt>
                   <dd>{candidate.score.toFixed(1)}</dd>
-                  <dt>Ascent</dt>
-                  <dd>{Math.round(candidate.metrics.ascentMeters)} m</dd>
+                  <dt>
+                    {
+                      elevationMetricDisplay(elevationMetric, candidate.metrics)
+                        .label
+                    }
+                  </dt>
+                  <dd>
+                    {
+                      elevationMetricDisplay(elevationMetric, candidate.metrics)
+                        .value
+                    }
+                  </dd>
                   <dt>Turns</dt>
                   <dd>{candidate.metrics.turnCount}</dd>
                   <dt>Dedicated cycleway/footway</dt>

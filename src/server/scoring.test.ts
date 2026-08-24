@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest'
 import {
   computeAscentMeters,
   computeConstructionPenalty,
+  computeMaxGradientPercent,
+  computeNetElevationChange,
   computePathTypeRatio,
   countTurns,
   scoreCandidate,
@@ -25,6 +27,54 @@ describe('computeAscentMeters', () => {
   it('returns 0 when there are fewer than two elevation samples', () => {
     expect(computeAscentMeters([100])).toBe(0)
     expect(computeAscentMeters([])).toBe(0)
+  })
+})
+
+describe('computeNetElevationChange', () => {
+  it('returns the absolute difference between the last and first elevation samples', () => {
+    // Loops rarely end exactly where they started, so the sign is not
+    // meaningful — we report the magnitude of the net change.
+    expect(computeNetElevationChange([100, 130, 90, 115])).toBe(15)
+  })
+
+  it('returns 0 for a route that ends where it started', () => {
+    expect(computeNetElevationChange([100, 150, 80, 100])).toBe(0)
+  })
+
+  it('returns 0 when there are fewer than two elevation samples', () => {
+    expect(computeNetElevationChange([100])).toBe(0)
+    expect(computeNetElevationChange([])).toBe(0)
+  })
+})
+
+describe('computeMaxGradientPercent', () => {
+  it('returns the steepest uphill grade (%) across consecutive points', () => {
+    // Point spacing chosen so the horizontal run is easy to hand-verify:
+    // ~0.0009 degrees latitude ≈ 100m at the equator.
+    const points = [
+      { lat: 0, lon: 0, elevation: 100 }, // start
+      { lat: 0.0009, lon: 0, elevation: 105 }, // ~100m run, +5m rise => 5%
+      { lat: 0.0018, lon: 0, elevation: 125 }, // ~100m run, +20m rise => 20%
+      { lat: 0.0027, lon: 0, elevation: 120 }, // descent, ignored
+    ]
+
+    expect(computeMaxGradientPercent(points)).toBeCloseTo(20, 0)
+  })
+
+  it('ignores descending segments, returning 0 for a downhill-only route', () => {
+    const points = [
+      { lat: 0, lon: 0, elevation: 100 },
+      { lat: 0.0009, lon: 0, elevation: 90 },
+    ]
+
+    expect(computeMaxGradientPercent(points)).toBe(0)
+  })
+
+  it('returns 0 when there are fewer than two points', () => {
+    expect(
+      computeMaxGradientPercent([{ lat: 0, lon: 0, elevation: 100 }]),
+    ).toBe(0)
+    expect(computeMaxGradientPercent([])).toBe(0)
   })
 })
 
@@ -122,5 +172,62 @@ describe('scoreCandidate', () => {
     })
 
     expect(underConstruction).toBeLessThan(clean)
+  })
+
+  it('defaults to using ascentMeters for the elevation term when no metric is selected', () => {
+    const metrics = {
+      ascentMeters: 200,
+      netElevationChangeMeters: 999,
+      maxGradientPercent: 999,
+      turnCount: 10,
+      pathTypeRatio: 0.4,
+      constructionPenalty: 0.1,
+    }
+
+    const expected =
+      metrics.ascentMeters * SCORING_WEIGHTS.ascentMeters +
+      metrics.turnCount * SCORING_WEIGHTS.turnCount +
+      metrics.pathTypeRatio * SCORING_WEIGHTS.pathTypeRatio +
+      metrics.constructionPenalty * SCORING_WEIGHTS.constructionPenalty
+
+    expect(scoreCandidate(metrics)).toBeCloseTo(expected)
+  })
+
+  it('uses netElevationChangeMeters for the elevation term when that metric is selected', () => {
+    const metrics = {
+      ascentMeters: 999,
+      netElevationChangeMeters: 30,
+      maxGradientPercent: 999,
+      turnCount: 10,
+      pathTypeRatio: 0.4,
+      constructionPenalty: 0.1,
+    }
+
+    const expected =
+      metrics.netElevationChangeMeters * SCORING_WEIGHTS.ascentMeters +
+      metrics.turnCount * SCORING_WEIGHTS.turnCount +
+      metrics.pathTypeRatio * SCORING_WEIGHTS.pathTypeRatio +
+      metrics.constructionPenalty * SCORING_WEIGHTS.constructionPenalty
+
+    expect(scoreCandidate(metrics, 'netChange')).toBeCloseTo(expected)
+  })
+
+  it('uses maxGradientPercent for the elevation term when that metric is selected', () => {
+    const metrics = {
+      ascentMeters: 999,
+      netElevationChangeMeters: 999,
+      maxGradientPercent: 12,
+      turnCount: 10,
+      pathTypeRatio: 0.4,
+      constructionPenalty: 0.1,
+    }
+
+    const expected =
+      metrics.maxGradientPercent * SCORING_WEIGHTS.ascentMeters +
+      metrics.turnCount * SCORING_WEIGHTS.turnCount +
+      metrics.pathTypeRatio * SCORING_WEIGHTS.pathTypeRatio +
+      metrics.constructionPenalty * SCORING_WEIGHTS.constructionPenalty
+
+    expect(scoreCandidate(metrics, 'maxGradient')).toBeCloseTo(expected)
   })
 })

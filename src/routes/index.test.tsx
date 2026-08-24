@@ -41,6 +41,16 @@ describe('Home', () => {
     expect(screen.getByRole('heading')).toHaveTextContent('TrekkPilot')
   })
 
+  it('lets the user pick which elevation metric drives scoring, defaulting to ascent', () => {
+    render(<Home />)
+
+    const select = screen.getByLabelText(/elevation metric/i)
+    expect(select).toHaveValue('ascent')
+
+    fireEvent.change(select, { target: { value: 'netChange' } })
+    expect(select).toHaveValue('netChange')
+  })
+
   it('lets the user pick an activity type and a target duration', () => {
     render(<Home />)
 
@@ -172,6 +182,7 @@ describe('Home', () => {
         activity: 'cycling',
         start: { lat: 52.52, lon: 13.405 },
         durationMinutes: 60,
+        elevationMetric: 'ascent',
       },
     })
   })
@@ -191,6 +202,34 @@ describe('Home', () => {
     expect(screen.getByText(/60 m/)).toBeInTheDocument() // ascent of candidate 3
     expect(screen.getAllByText(/turn/i).length).toBeGreaterThan(0)
     expect(screen.getAllByText(/construction/i).length).toBeGreaterThan(0)
+  })
+
+  it('shows the selected elevation metric value instead of ascent when a different metric is chosen', async () => {
+    const candidatesWithAllMetrics = sampleCandidates.map((candidate) => ({
+      ...candidate,
+      metrics: {
+        ...candidate.metrics,
+        netElevationChangeMeters: candidate.metrics.ascentMeters / 4,
+        maxGradientPercent: 8.5,
+      },
+    }))
+    getLoopRouteMock.mockResolvedValue(candidatesWithAllMetrics)
+
+    render(<Home />)
+    fireEvent.change(screen.getByLabelText(/elevation metric/i), {
+      target: { value: 'netChange' },
+    })
+    await fetchCandidates()
+
+    expect(getLoopRouteMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({ elevationMetric: 'netChange' }),
+    })
+    expect(screen.getAllByText(/net elevation change/i).length).toBeGreaterThan(
+      0,
+    )
+    expect(screen.getByText('30 m')).toBeInTheDocument() // 120 / 4
+    expect(screen.getByText('50 m')).toBeInTheDocument() // 200 / 4
+    expect(screen.getByText('15 m')).toBeInTheDocument() // 60 / 4
   })
 
   it('lets the user select one of the 3 candidates as the active route', async () => {

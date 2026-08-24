@@ -6,6 +6,17 @@ import {
   type GeoPoint,
   type LoopRouteInput,
 } from '#/server/ors'
+import type { ElevationMetricType } from '#/server/scoring'
+
+const ELEVATION_METRIC_TYPES: readonly string[] = [
+  'ascent',
+  'netChange',
+  'maxGradient',
+] satisfies ElevationMetricType[]
+
+function isElevationMetricType(value: unknown): value is ElevationMetricType {
+  return typeof value === 'string' && ELEVATION_METRIC_TYPES.includes(value)
+}
 
 function validateStart(start: unknown): GeoPoint {
   if (typeof start !== 'object' || start === null) {
@@ -29,7 +40,13 @@ export function validateLoopRouteInput(input: unknown): LoopRouteInput {
     activity,
     start,
     durationMinutes,
-  }: { activity?: unknown; start?: unknown; durationMinutes?: unknown } = input
+    elevationMetric,
+  }: {
+    activity?: unknown
+    start?: unknown
+    durationMinutes?: unknown
+    elevationMetric?: unknown
+  } = input
 
   if (!isActivityType(activity)) {
     throw new Error('Invalid activity: must be "cycling" or "trekking"')
@@ -43,10 +60,20 @@ export function validateLoopRouteInput(input: unknown): LoopRouteInput {
     throw new Error('Invalid duration: must be a positive number of minutes')
   }
 
+  if (
+    elevationMetric !== undefined &&
+    !isElevationMetricType(elevationMetric)
+  ) {
+    throw new Error(
+      'Invalid elevationMetric: must be "ascent", "netChange", or "maxGradient"',
+    )
+  }
+
   return {
     activity,
     start: validateStart(start),
     durationMinutes,
+    elevationMetric: elevationMetric ?? 'ascent',
   }
 }
 

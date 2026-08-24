@@ -2,10 +2,13 @@ import { targetDistanceMeters, type ActivityType } from '#/lib/activity'
 import {
   computeAscentMeters,
   computeConstructionPenalty,
+  computeMaxGradientPercent,
+  computeNetElevationChange,
   computePathTypeRatio,
   countTurns,
   scoreCandidate,
   type CandidateMetrics,
+  type ElevationMetricType,
   type OrsSegment,
   type WaytypeSummaryEntry,
 } from '#/server/scoring'
@@ -77,6 +80,8 @@ export type LoopRouteInput = {
   activity: ActivityType
   start: GeoPoint
   durationMinutes: number
+  /** Which elevation signal drives scoring/display (issue 003). Defaults to 'ascent'. */
+  elevationMetric?: ElevationMetricType
 }
 
 export type LoopRouteResult = {
@@ -182,10 +187,15 @@ function metricsFromFeature(feature: OrsFeature): CandidateMetrics {
   const elevations = feature.geometry.coordinates.map(
     ([, , elevation]) => elevation ?? 0,
   )
+  const elevationPoints = feature.geometry.coordinates.map(
+    ([lon, lat, elevation]) => ({ lat, lon, elevation: elevation ?? 0 }),
+  )
   const waytypeSummary = feature.properties.extras?.waytype?.summary
 
   return {
     ascentMeters: computeAscentMeters(elevations),
+    netElevationChangeMeters: computeNetElevationChange(elevations),
+    maxGradientPercent: computeMaxGradientPercent(elevationPoints),
     turnCount: countTurns(feature.properties.segments),
     pathTypeRatio: computePathTypeRatio(waytypeSummary),
     constructionPenalty: computeConstructionPenalty(waytypeSummary),
@@ -202,6 +212,7 @@ export async function fetchLoopRouteCandidates({
   activity,
   start,
   durationMinutes,
+  elevationMetric = 'ascent',
 }: LoopRouteInput): Promise<LoopRouteCandidate[]> {
   const apiKey = requireApiKey()
   const distanceMeters = targetDistanceMeters(activity, durationMinutes)
@@ -233,7 +244,7 @@ export async function fetchLoopRouteCandidates({
         distanceMeters: feature.properties.summary.distance,
         durationSeconds: feature.properties.summary.duration,
         metrics,
-        score: scoreCandidate(metrics),
+        score: scoreCandidate(metrics, elevationMetric),
       }
       return candidate
     }),

@@ -146,6 +146,44 @@ describe('fetchLoopRouteCandidates', () => {
     expect(seeds.every((seed) => typeof seed === 'number')).toBe(true)
   })
 
+  it('uses the selected elevation metric to score candidates instead of total ascent', async () => {
+    vi.stubEnv('ORS_API_KEY', 'secret-key')
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: () =>
+          Promise.resolve(
+            orsFeature({
+              // Net change: |100 - 100| = 0. Ascent would be 30 (100->130->100).
+              coordinates: [
+                [13.405, 52.52, 100],
+                [13.41, 52.525, 130],
+                [13.405, 52.52, 100],
+              ],
+              steps: [{}, {}, {}],
+              waytypeSummary: [
+                { value: 2, distance: 6_000, amount: 60 },
+                { value: 6, distance: 4_000, amount: 40 },
+              ],
+            }),
+          ),
+      }),
+    )
+
+    const candidates = await fetchLoopRouteCandidates({
+      activity: 'cycling',
+      start: { lat: 52.52, lon: 13.405 },
+      durationMinutes: 60,
+      elevationMetric: 'netChange',
+    })
+    const top = candidates[0]
+    expect(top).toBeDefined()
+
+    expect(top?.metrics.netElevationChangeMeters).toBe(0)
+    expect(top?.score).toBeCloseTo(3 * -0.5 + 0.4 * 50)
+  })
+
   it('computes ascent, turn count and path-type ratio metrics per candidate from the ORS response', async () => {
     vi.stubEnv('ORS_API_KEY', 'secret-key')
     vi.stubGlobal(
@@ -178,12 +216,13 @@ describe('fetchLoopRouteCandidates', () => {
     const top = candidates[0]
     expect(top).toBeDefined()
 
-    expect(top?.metrics).toEqual({
-      ascentMeters: 30,
-      turnCount: 3,
-      pathTypeRatio: 0.4,
-      constructionPenalty: 0,
-    })
+    expect(top?.metrics.ascentMeters).toBe(30)
+    expect(top?.metrics.turnCount).toBe(3)
+    expect(top?.metrics.pathTypeRatio).toBe(0.4)
+    expect(top?.metrics.constructionPenalty).toBe(0)
+    expect(top?.metrics.netElevationChangeMeters).toBe(0)
+    // ~650m horizontal run between the two distinct points, +30m rise.
+    expect(top?.metrics.maxGradientPercent).toBeCloseTo(4.61, 1)
     expect(top?.score).toBeCloseTo(30 * -0.05 + 3 * -0.5 + 0.4 * 50)
   })
 

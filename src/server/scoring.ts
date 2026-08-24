@@ -21,6 +21,87 @@ export function computeAscentMeters(elevations: number[]): number {
   return ascent
 }
 
+/**
+ * Net elevation change over a route: the magnitude of the difference between
+ * the last and first elevation samples.
+ *
+ * ASSUMPTION: for a round-trip loop the start and end point are (near) the
+ * same physical location, so the raw signed difference is not a meaningful
+ * "uphill vs downhill" signal — it mostly reflects GPS/elevation-model noise
+ * plus whichever direction the loop happened to be walked. We report the
+ * absolute value as a magnitude: how far off the loop is from truly closing
+ * elevation-wise, which is what near-zero-for-loops implies.
+ */
+export function computeNetElevationChange(elevations: number[]): number {
+  if (elevations.length < 2) {
+    return 0
+  }
+  const first = elevations[0] ?? 0
+  const last = elevations[elevations.length - 1] ?? 0
+  return Math.abs(last - first)
+}
+
+/** A single elevation sample with its geographic position, used for gradient calculations. */
+export type ElevationPoint = {
+  lat: number
+  lon: number
+  elevation: number
+}
+
+const EARTH_RADIUS_METERS = 6_371_000
+
+/** Great-circle distance between two lat/lon points, in meters (haversine formula). */
+function haversineDistanceMeters(a: ElevationPoint, b: ElevationPoint): number {
+  const toRadians = (degrees: number) => (degrees * Math.PI) / 180
+  const dLat = toRadians(b.lat - a.lat)
+  const dLon = toRadians(b.lon - a.lon)
+  const lat1 = toRadians(a.lat)
+  const lat2 = toRadians(b.lat)
+
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2
+
+  return 2 * EARTH_RADIUS_METERS * Math.asin(Math.sqrt(h))
+}
+
+/**
+ * Steepest single uphill grade (%) over any consecutive pair of points,
+ * i.e. max(rise / run * 100) across the route.
+ *
+ * ASSUMPTION: "steepest climb" means uphill only — descending segments are
+ * ignored (not treated as negative grade), mirroring how computeAscentMeters
+ * only accumulates positive deltas. Horizontal run between consecutive
+ * points is the great-circle (haversine) distance; a zero-distance segment
+ * is skipped to avoid a divide-by-zero / infinite grade.
+ */
+export function computeMaxGradientPercent(points: ElevationPoint[]): number {
+  let maxGradient = 0
+  for (let i = 1; i < points.length; i++) {
+    const previous = points[i - 1]
+    const current = points[i]
+    if (!previous || !current) {
+      continue
+    }
+
+    const rise = current.elevation - previous.elevation
+    if (rise <= 0) {
+      continue
+    }
+
+    const run = haversineDistanceMeters(previous, current)
+    if (run === 0) {
+      continue
+    }
+
+    const gradient = (rise / run) * 100
+    if (gradient > maxGradient) {
+      maxGradient = gradient
+    }
+  }
+  return maxGradient
+}
+
 export type OrsSegment = {
   steps: unknown[]
 }
@@ -102,6 +183,17 @@ export function computeConstructionPenalty(
 export type CandidateMetrics = {
   /** Total climb over the route, in meters. */
   ascentMeters: number
+  /**
+   * Magnitude of the elevation difference between the route's last and
+   * first samples, in meters. Optional so callers/tests that only care
+   * about total ascent (issue 002 behavior) don't need to supply it.
+   */
+  netElevationChangeMeters?: number
+  /**
+   * Steepest single uphill grade (%) over any segment of the route.
+   * Optional for the same reason as netElevationChangeMeters above.
+   */
+  maxGradientPercent?: number
   /** Raw count of maneuver/turn steps. */
   turnCount: number
   /** Share (0..1) of route distance on a dedicated cycleway/footway. */
@@ -109,6 +201,9 @@ export type CandidateMetrics = {
   /** Share (0..1) of route distance tagged as under construction. */
   constructionPenalty: number
 }
+
+/** Which elevation signal drives the elevation term of the scoring formula (issue 003). */
+export type ElevationMetricType = 'ascent' | 'netChange' | 'maxGradient'
 
 /**
  * Default weights for the single weighted-sum scoring formula (issue 002).
@@ -129,10 +224,41 @@ export const SCORING_WEIGHTS = {
   constructionPenalty: -100,
 } as const
 
-/** Combines a candidate's metrics into a single comparable score via the weighted-sum formula. */
-export function scoreCandidate(metrics: CandidateMetrics): number {
+/**
+ * Picks the value that feeds the elevation term of the scoring formula,
+ * based on the user-selected elevation metric (issue 003). Defaults to
+ * total ascent, matching the issue 002 behavior.
+ */
+function elevationTermValue(
+  metrics: CandidateMetrics,
+  elevationMetric: ElevationMetricType,
+): number {
+  switch (elevationMetric) {
+    case 'netChange':
+      return metrics.netElevationChangeMeters ?? 0
+    case 'maxGradient':
+      return metrics.maxGradientPercent ?? 0
+    case 'ascent':
+      return metrics.ascentMeters
+  }
+}
+
+/**
+ * Combines a candidate's metrics into a single comparable score via the
+ * weighted-sum formula. `elevationMetric` selects which elevation signal
+ * (total ascent, net elevation change, or max gradient) feeds the elevation
+ * term; it reuses the same `ascentMeters` weight regardless of which metric
+ * is selected, since all three are elevation-flavored signals where "more is
+ * worse" and a per-metric weight would add complexity without a documented
+ * reason to prefer different magnitudes yet.
+ */
+export function scoreCandidate(
+  metrics: CandidateMetrics,
+  elevationMetric: ElevationMetricType = 'ascent',
+): number {
   return (
-    metrics.ascentMeters * SCORING_WEIGHTS.ascentMeters +
+    elevationTermValue(metrics, elevationMetric) *
+      SCORING_WEIGHTS.ascentMeters +
     metrics.turnCount * SCORING_WEIGHTS.turnCount +
     metrics.pathTypeRatio * SCORING_WEIGHTS.pathTypeRatio +
     metrics.constructionPenalty * SCORING_WEIGHTS.constructionPenalty
