@@ -85,7 +85,7 @@ export function TopPillBar({
           // decides between two utilities of equal specificity.
           className={`${ICON_BUTTON_CLASS} aria-pressed:border-moss aria-pressed:bg-moss aria-pressed:text-surface`}
         >
-          <span aria-hidden="true">◎</span>
+          <span aria-hidden="true">📍</span>
         </button>
         <button
           type="button"
