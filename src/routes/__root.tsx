@@ -3,14 +3,19 @@ import { HeadContent, Scripts, createRootRoute } from '@tanstack/react-router'
 import appCss from '../styles.css?url'
 
 /**
- * Everything the document head links to: the app stylesheet, and the two type
- * families (Archivo for UI text, IBM Plex Mono for numbers and micro-labels)
- * with preconnects so the faces land in the first paint.
+ * Everything the document head links to: the app stylesheet, the favicon,
+ * and the two type families (Archivo for UI text, IBM Plex Mono for numbers
+ * and micro-labels) with preconnects so the faces land in the first paint.
  */
 export const HEAD_LINKS: React.ComponentProps<'link'>[] = [
   {
     rel: 'stylesheet',
     href: appCss,
+  },
+  {
+    rel: 'icon',
+    type: 'image/svg+xml',
+    href: '/favicon.svg',
   },
   { rel: 'preconnect', href: 'https://fonts.googleapis.com' },
   {
