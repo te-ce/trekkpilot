@@ -14,6 +14,10 @@ import { TopPillBar } from '#/components/TopPillBar'
 import type { ActivityType } from '#/lib/activity'
 import { DEFAULT_DURATION_MINUTES } from '#/lib/duration'
 import {
+  describeGeolocationError,
+  logGeolocationError,
+} from '#/lib/geolocationError'
+import {
   rankCandidates,
   ROUTE_COLORS,
   type RankBy,
@@ -182,9 +186,15 @@ export function Home() {
    * would drain the battery and pop the permission prompt at people who only
    * came to plan a route. The hook itself still pauses while backgrounded.
    */
-  const livePosition = useLiveGeolocation(
+  const { position: livePosition, error: liveGeoError } = useLiveGeolocation(
     follow || jumpTo !== null || activeRoute !== null,
   )
+
+  useEffect(() => {
+    if (liveGeoError) {
+      setError(liveGeoError)
+    }
+  }, [liveGeoError])
 
   const sheetState = resolveSheetState({
     intent,
@@ -237,8 +247,9 @@ export function Home() {
           token: (previous?.token ?? 0) + 1,
         }))
       },
-      () => {
-        setError('Could not read the current GPS location.')
+      (error) => {
+        logGeolocationError('getCurrentPosition', error)
+        setError(describeGeolocationError(error))
       },
     )
   }

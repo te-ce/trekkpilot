@@ -1,6 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
 
+import {
+  describeGeolocationError,
+  logGeolocationError,
+} from '#/lib/geolocationError'
+
 export type GeoPoint = { lat: number; lon: number }
+
+export type LiveGeolocation = {
+  position: GeoPoint | null
+  error: string | null
+}
 
 /**
  * Tracks the user's live position via the foreground Geolocation API
@@ -10,8 +20,9 @@ export type GeoPoint = { lat: number; lon: number }
  * tracking and no battery drain while hidden. Always clears the watch on
  * unmount or when `active` turns false.
  */
-export function useLiveGeolocation(active: boolean): GeoPoint | null {
+export function useLiveGeolocation(active: boolean): LiveGeolocation {
   const [position, setPosition] = useState<GeoPoint | null>(null)
+  const [error, setError] = useState<string | null>(null)
   const watchIdRef = useRef<number | null>(null)
 
   useEffect(() => {
@@ -22,10 +33,15 @@ export function useLiveGeolocation(active: boolean): GeoPoint | null {
     function startWatching() {
       watchIdRef.current = navigator.geolocation.watchPosition(
         (geoPosition) => {
+          setError(null)
           setPosition({
             lat: geoPosition.coords.latitude,
             lon: geoPosition.coords.longitude,
           })
+        },
+        (geoError) => {
+          logGeolocationError('watchPosition', geoError)
+          setError(describeGeolocationError(geoError))
         },
       )
     }
@@ -56,5 +72,5 @@ export function useLiveGeolocation(active: boolean): GeoPoint | null {
     }
   }, [active])
 
-  return position
+  return { position, error }
 }

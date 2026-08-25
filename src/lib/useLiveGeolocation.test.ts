@@ -61,7 +61,7 @@ describe('useLiveGeolocation', () => {
     const { result } = renderHook(() => useLiveGeolocation(true))
 
     expect(watchPosition).toHaveBeenCalledTimes(1)
-    expect(result.current).toBeNull()
+    expect(result.current.position).toBeNull()
 
     act(() => {
       successCallback?.({
@@ -69,7 +69,45 @@ describe('useLiveGeolocation', () => {
       } as GeolocationPosition)
     })
 
-    expect(result.current).toEqual({ lat: 52.52, lon: 13.405 })
+    expect(result.current.position).toEqual({ lat: 52.52, lon: 13.405 })
+  })
+
+  it('reports an error when the watch fails, and clears it on the next success', () => {
+    let successCallback: PositionCallback | undefined
+    let errorCallback: PositionErrorCallback | undefined
+    const watchPosition = vi.fn(
+      (success: PositionCallback, failure: PositionErrorCallback) => {
+        successCallback = success
+        errorCallback = failure
+        return 1
+      },
+    )
+    const clearWatch = vi.fn()
+    Object.defineProperty(globalThis.navigator, 'geolocation', {
+      value: { watchPosition, clearWatch },
+      configurable: true,
+    })
+
+    const { result } = renderHook(() => useLiveGeolocation(true))
+
+    act(() => {
+      errorCallback?.({
+        code: 2,
+        PERMISSION_DENIED: 1,
+        POSITION_UNAVAILABLE: 2,
+        TIMEOUT: 3,
+      } as GeolocationPositionError)
+    })
+
+    expect(result.current.error).toMatch(/location/i)
+
+    act(() => {
+      successCallback?.({
+        coords: { latitude: 52.52, longitude: 13.405 },
+      } as GeolocationPosition)
+    })
+
+    expect(result.current.error).toBeNull()
   })
 
   it('clears the watch when the tab is backgrounded and restarts it when foregrounded again', () => {

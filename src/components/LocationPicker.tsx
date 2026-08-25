@@ -5,6 +5,10 @@ import {
   MICRO_LABEL_CLASS,
   SECONDARY_BUTTON_CLASS,
 } from '#/lib/controlStyles'
+import {
+  describeGeolocationError,
+  logGeolocationError,
+} from '#/lib/geolocationError'
 import { formatCoordinates } from '#/lib/labels'
 import { geocodeLocation } from '#/server/functions/geocodeLocation'
 
@@ -56,8 +60,9 @@ export function LocationPicker({
           lon: position.coords.longitude,
         })
       },
-      () => {
-        onError('Could not read the current GPS location.')
+      (error) => {
+        logGeolocationError('getCurrentPosition', error)
+        onError(describeGeolocationError(error))
       },
     )
   }
