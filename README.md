@@ -9,6 +9,12 @@ GPX file or a Google Maps link.
 Point-to-point works too: name a start and a destination and it ranks three
 ways to get there.
 
+<p>
+  <img src="docs/screenshots/01-home.png" width="260" alt="Plan-a-loop sheet over the map, set to 1 hour of cycling">
+  <img src="docs/screenshots/02-candidates.png" width="260" alt="Three ranked loop candidates with distance, time and climbing">
+  <img src="docs/screenshots/03-route-detail.png" width="260" alt="Route detail with GPX download and Google Maps export">
+</p>
+
 ## What it does
 
 - **Loop routes from a time budget.** Duration and activity convert to a target
