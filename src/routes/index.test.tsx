@@ -65,6 +65,8 @@ vi.mock('#/server/functions/geocodeLocation', () => ({
 const downloadGpxMock = vi.fn()
 vi.mock('#/lib/gpx', () => ({
   downloadGpx: (...args: unknown[]) => downloadGpxMock(...args),
+  canShareGpx: () => false,
+  shareGpx: vi.fn(),
 }))
 
 import { buildGoogleMapsUrl } from '#/lib/googleMaps'

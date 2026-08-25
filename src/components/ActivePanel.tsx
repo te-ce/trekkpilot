@@ -5,7 +5,7 @@ import {
   QUIET_BUTTON_CLASS,
   SECONDARY_BUTTON_CLASS,
 } from '#/lib/controlStyles'
-import { downloadGpx } from '#/lib/gpx'
+import { canShareGpx, downloadGpx, shareGpx } from '#/lib/gpx'
 import { elevationMetricDisplay, formatRatio } from '#/lib/labels'
 import { formatDistance, formatDuration } from '#/lib/ranking'
 import type { RouteMode } from '#/lib/routeMode'
@@ -98,6 +98,25 @@ export function ActivePanel({
         >
           Download GPX
         </button>
+        {canShareGpx() && (
+          <button
+            type="button"
+            onClick={() => {
+              shareGpx(
+                { coordinates: candidate.coordinates },
+                `trekkpilot-route-${route.exportIndex}.gpx`,
+              ).catch((error: unknown) => {
+                if (error instanceof Error && error.name === 'AbortError') {
+                  return
+                }
+                throw error
+              })
+            }}
+            className={`mt-2 w-full ${SECONDARY_BUTTON_CLASS}`}
+          >
+            Share GPX to Komoot…
+          </button>
+        )}
         <p className={CAVEAT_CLASS}>
           Exact geometry: the file follows this line point for point.
         </p>

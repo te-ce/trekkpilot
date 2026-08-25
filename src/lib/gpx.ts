@@ -33,3 +33,31 @@ export function downloadGpx(
 
   URL.revokeObjectURL(url)
 }
+
+function gpxFile(candidate: GpxExportableCandidate, filename: string): File {
+  return new File([buildGpxDocument(candidate)], filename, {
+    type: 'application/gpx+xml',
+  })
+}
+
+/**
+ * True when the platform's share sheet can take a GPX file — the Web Share
+ * API (Level 2) file support that Komoot's "open with" integration relies on.
+ * Absent on desktop browsers, so callers fall back to `downloadGpx`.
+ */
+export function canShareGpx(): boolean {
+  if (!('canShare' in navigator)) {
+    return false
+  }
+  return navigator.canShare({
+    files: [new File([''], 'probe.gpx', { type: 'application/gpx+xml' })],
+  })
+}
+
+/** Opens the share sheet with the candidate's GPX file, e.g. to hand it to Komoot. */
+export function shareGpx(
+  candidate: GpxExportableCandidate,
+  filename: string,
+): Promise<void> {
+  return navigator.share({ files: [gpxFile(candidate, filename)] })
+}
