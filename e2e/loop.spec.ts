@@ -22,6 +22,12 @@ const pathHeavyLoop = specNamed(loopCandidateSpecs, 'hilly park loop')
 const flattestSurvivingLoop = specNamed(loopCandidateSpecs, 'twisty canal loop')
 const roadworksLoop = specNamed(loopCandidateSpecs, 'roadworks loop')
 
+/** Reveals the free-form minutes field, which the duration presets fold away. */
+async function openCustomDuration(page: Page) {
+  await page.getByRole('group', { name: 'Duration' }).getByText('Other').click()
+  await expect(page.getByLabel(/duration/i)).toBeVisible()
+}
+
 async function searchLoopsFromCurrentPosition(page: Page) {
   await page.goto('/')
   await page.getByRole('button', { name: /use my current location/i }).click()
@@ -48,18 +54,21 @@ test('a loop search offers three candidates with distance and time @smoke', asyn
 })
 
 /**
- * The duration is a free-form number of minutes, so the value a person can
- * search for is not limited to a handful of presets. 47 minutes is deliberately
- * not a round number: the derived distance has to follow it, and the search has
- * to run on it.
+ * The presets are the one-tap answer, not the only answer: "Other" still opens
+ * a free-form number of minutes. 47 minutes is deliberately not a round number:
+ * the derived distance has to follow it, and the search has to run on it.
  */
 test('an arbitrary duration is searchable @smoke', async ({ page }) => {
   await page.goto('/')
 
-  const duration = page.getByLabel(/duration/i)
-  await expect(duration).toHaveValue('60')
+  // Exact: "1h" is otherwise a prefix of the "1h30" chip beside it.
+  await expect(
+    page.getByRole('radio', { name: '1h', exact: true }),
+  ).toBeChecked()
+  await expect(page.getByLabel(/duration/i)).toBeHidden()
 
-  await duration.fill('47')
+  await openCustomDuration(page)
+  await page.getByLabel(/duration/i).fill('47')
   await expect(page.getByText('≈ 11.8 km at 15 km/h')).toBeVisible()
 
   await page.getByRole('button', { name: /use my current location/i }).click()
@@ -76,6 +85,7 @@ test('a duration of zero is refused instead of searched', async ({ page }) => {
   await page.goto('/')
 
   await page.getByRole('button', { name: /use my current location/i }).click()
+  await openCustomDuration(page)
   await page.getByLabel(/duration/i).fill('0')
   await page.getByRole('button', { name: /find 3 routes/i }).click()
 

@@ -75,7 +75,7 @@ export function PlanPanel({
 
   return (
     <form
-      className="space-y-4"
+      className="flex flex-col gap-3"
       onSubmit={(event) => {
         event.preventDefault()
         // Point-to-point ignores the duration entirely, so a bad number there
@@ -88,25 +88,42 @@ export function PlanPanel({
         onSubmit()
       }}
     >
-      <h2 className="text-ink text-lg font-semibold">
+      {/*
+        Kept in the heading outline but out of the sheet: the pill bar over the
+        map already says what is being planned, and the sheet's own region label
+        names it for assistive tech, so a visible title only cost the map a row.
+      */}
+      <h2 className="sr-only">
         {mode === 'loop' ? 'Plan a loop' : 'Plan a route to somewhere'}
       </h2>
 
-      <SegmentedControl
-        label="Shape"
-        name="mode"
-        options={MODE_OPTIONS}
-        value={mode}
-        onChange={onModeChange}
-      />
-
-      <SegmentedControl
-        label="Activity"
-        name="activity"
-        options={ACTIVITY_OPTIONS}
-        value={activity}
-        onChange={onActivityChange}
-      />
+      {/*
+        Shape and activity are each two words wide, so they share one row rather
+        than stacking two labelled blocks. Their options say what the choice is
+        about, which is what lets the labels go visually quiet.
+      */}
+      <div className="flex gap-2">
+        <div className="min-w-0 flex-1">
+          <SegmentedControl
+            label="Shape"
+            labelHidden
+            name="mode"
+            options={MODE_OPTIONS}
+            value={mode}
+            onChange={onModeChange}
+          />
+        </div>
+        <div className="min-w-0 flex-1">
+          <SegmentedControl
+            label="Activity"
+            labelHidden
+            name="activity"
+            options={ACTIVITY_OPTIONS}
+            value={activity}
+            onChange={onActivityChange}
+          />
+        </div>
+      </div>
 
       {mode === 'loop' && (
         <DurationField
@@ -120,24 +137,26 @@ export function PlanPanel({
 
       <LocationPicker
         legend="Start point"
+        shortLabel="From"
         idPrefix="start"
         value={start}
         valueLabel={startLabel}
         onChange={onStartChange}
         onError={onError}
         showCurrentLocation
-        hint="Tap the map to drop a pin, or:"
+        hint="Tap the map to drop a pin"
       />
 
       {mode === 'pointToPoint' && (
         <LocationPicker
           legend="Stop point"
+          shortLabel="To"
           idPrefix="stop"
           value={stop}
           valueLabel={stopLabel}
           onChange={onStopChange}
           onError={onError}
-          hint="Search for where you want to end up:"
+          hint="Search for where you want to end up"
         />
       )}
 

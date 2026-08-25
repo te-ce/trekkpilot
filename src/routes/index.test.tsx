@@ -96,13 +96,32 @@ function tapMap() {
   fireEvent.click(screen.getByRole('button', { name: /tap the map/i }))
 }
 
-/** The free-form minutes field in the plan. */
+/** The free-form minutes field in the plan, which the presets keep folded away. */
 function durationField(): HTMLElement {
   return screen.getByRole('spinbutton', { name: /duration/i })
 }
 
+/** Picks one of the one-tap durations, by the label the chip shows. */
+function chooseDurationPreset(label: string) {
+  fireEvent.click(screen.getByRole('radio', { name: label }))
+}
+
+/**
+ * Types a duration, revealing the field first if a preset is currently
+ * selected — which is how a person reaches it too.
+ */
 function typeDuration(value: string) {
+  if (screen.queryByRole('spinbutton', { name: /duration/i }) === null) {
+    chooseDurationPreset('Other')
+  }
   fireEvent.change(durationField(), { target: { value } })
+}
+
+/** Uncovers a picker's search field and coordinate override. */
+function expandPicker(group: HTMLElement) {
+  fireEvent.click(
+    within(group).getByRole('button', { name: 'Search or enter coordinates' }),
+  )
 }
 
 describe('Home', () => {
@@ -138,7 +157,31 @@ describe('Home', () => {
     expect(screen.getByTestId('route-map')).toBeInTheDocument()
     expect(screen.getByRole('radio', { name: /loop/i })).toBeChecked()
     expect(screen.getByRole('radio', { name: /cycling/i })).toBeChecked()
-    expect(durationField()).toHaveValue(60)
+    // An hour is a preset, so the plan opens on a chip rather than a keypad.
+    expect(screen.getByRole('radio', { name: '1h' })).toBeChecked()
+    expect(screen.queryByRole('spinbutton', { name: /duration/i })).toBeNull()
+  })
+
+  it('searches a duration picked from the presets', async () => {
+    getLoopRouteMock.mockResolvedValue(sampleCandidates)
+    render(<Home />)
+    tapMap()
+
+    chooseDurationPreset('1h30')
+    expect(screen.getByText(/≈ 22\.5 km at 15 km\/h/)).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /find 3 routes/i }))
+
+    await waitFor(() =>
+      expect(getLoopRouteMock).toHaveBeenCalledWith({
+        data: {
+          activity: 'cycling',
+          start: MAP_TAP_POINT,
+          durationMinutes: 90,
+          elevationMetric: 'ascent',
+        },
+      }),
+    )
   })
 
   it('shows the target distance the typed duration works out to', () => {
@@ -221,10 +264,11 @@ describe('Home', () => {
     render(<Home />)
 
     const startGroup = screen.getByRole('group', { name: /start point/i })
+    expandPicker(startGroup)
     fireEvent.change(within(startGroup).getByLabelText(/search for a place/i), {
       target: { value: 'Berlin' },
     })
-    fireEvent.click(within(startGroup).getByRole('button', { name: /search/i }))
+    fireEvent.click(within(startGroup).getByRole('button', { name: 'Search' }))
 
     expect(geocodeLocationMock).toHaveBeenCalledWith({
       data: { query: 'Berlin' },
@@ -240,6 +284,7 @@ describe('Home', () => {
     render(<Home />)
 
     const startGroup = screen.getByRole('group', { name: /start point/i })
+    expandPicker(startGroup)
     fireEvent.change(within(startGroup).getByLabelText(/latitude/i), {
       target: { value: '52.52' },
     })

@@ -40,6 +40,14 @@ async function searchPlace(page: Page, field: 'start' | 'stop', query: string) {
   const picker = page.getByRole('group', {
     name: field === 'start' ? 'Start point' : 'Stop point',
   })
+  // The start point has the map and GPS to fall back on, so its search sits
+  // folded behind a button; the stop point has neither, so its is already open.
+  const reveal = picker.getByRole('button', {
+    name: 'Search or enter coordinates',
+  })
+  if ((await reveal.getAttribute('aria-expanded')) === 'false') {
+    await reveal.click()
+  }
   await picker
     .getByRole('searchbox', { name: /search for a place/i })
     .fill(query)

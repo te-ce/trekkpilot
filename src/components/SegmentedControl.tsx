@@ -9,6 +9,7 @@ export type SegmentedOption<T extends string> = { value: T; label: string }
  */
 export function SegmentedControl<T extends string>({
   label,
+  labelHidden = false,
   name,
   options,
   value,
@@ -16,6 +17,13 @@ export function SegmentedControl<T extends string>({
 }: {
   /** Micro-label above the row. Also names the group for assistive tech. */
   label: string
+  /**
+   * Hides the micro-label visually, keeping it as the group's accessible name.
+   * For rows whose options already say what the choice is about — two of these
+   * side by side, or a row of durations — where a label costs a line and
+   * explains nothing.
+   */
+  labelHidden?: boolean
   /** Radio group name; must be unique on the page. */
   name: string
   options: SegmentedOption<T>[]
@@ -24,7 +32,11 @@ export function SegmentedControl<T extends string>({
 }) {
   return (
     <fieldset className="min-w-0">
-      <legend className={`mb-1.5 ${MICRO_LABEL_CLASS}`}>{label}</legend>
+      <legend
+        className={labelHidden ? 'sr-only' : `mb-1.5 ${MICRO_LABEL_CLASS}`}
+      >
+        {label}
+      </legend>
       <div className="bg-surface-2 flex gap-1 rounded-2xl p-1">
         {options.map((option) => (
           <label

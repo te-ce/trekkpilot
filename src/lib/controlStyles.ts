@@ -12,6 +12,13 @@ export const PRIMARY_BUTTON_CLASS = `flex min-h-12 w-full items-center justify-c
 
 export const SECONDARY_BUTTON_CLASS = `min-h-11 rounded-xl border border-line bg-surface-2 px-3 text-sm font-medium text-ink hover:bg-surface ${FOCUS_RING}`
 
+/**
+ * Square sibling of `SECONDARY_BUTTON_CLASS`, for the icon-only controls that
+ * sit at the end of a one-line row (locate, search). Same 44px tap target as
+ * the labelled version — an icon is smaller, the target is not.
+ */
+export const SECONDARY_ICON_BUTTON_CLASS = `flex size-11 shrink-0 items-center justify-center rounded-xl border border-line bg-surface-2 text-base text-ink hover:bg-surface aria-expanded:border-moss aria-expanded:text-moss ${FOCUS_RING}`
+
 export const QUIET_BUTTON_CLASS = `min-h-11 rounded-xl px-1 text-sm font-medium text-ink-2 hover:text-ink ${FOCUS_RING}`
 
 export const FIELD_CLASS =

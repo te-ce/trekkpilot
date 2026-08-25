@@ -4,6 +4,7 @@ import {
   FIELD_CLASS,
   MICRO_LABEL_CLASS,
   SECONDARY_BUTTON_CLASS,
+  SECONDARY_ICON_BUTTON_CLASS,
 } from '#/lib/controlStyles'
 import {
   describeGeolocationError,
@@ -15,7 +16,13 @@ import { geocodeLocation } from '#/server/functions/geocodeLocation'
 export type GeoPoint = { lat: number; lon: number }
 
 export type LocationPickerProps = {
+  /** Names the group for assistive tech: "Start point", "Stop point". */
   legend: string
+  /**
+   * The same thing in the two or three characters the row can spare —
+   * "From", "To". Visible chrome only; the legend above is what gets read.
+   */
+  shortLabel: string
   /** Prefixes element ids so start/stop pickers don't collide when both render. */
   idPrefix: string
   value: GeoPoint | null
@@ -25,20 +32,22 @@ export type LocationPickerProps = {
   onError: (message: string) => void
   /** GPS lookup only makes sense for the user's own current position (the start point). */
   showCurrentLocation?: boolean
-  /** One line telling the user the fastest way to set this point. */
+  /** One line telling the user the fastest way to set this point, while it has none. */
   hint: string
 }
 
 /**
  * One location input, reused for the start and the stop point (issue 004).
  *
- * All three ways in from issue 001/004 are still here, but no longer as five
- * equal-weight controls: tapping the map (handled by the map itself) and GPS
- * are the obvious paths, a named-place search is next, and the raw lat/lon
- * override sits folded away for the one person who has coordinates in hand.
+ * All the ways in from issue 001/004 are still here, but the row itself is one
+ * line: what the point currently is, and the two controls that change it. The
+ * quick paths — tapping the map, which the map itself handles, and GPS — need
+ * no more than that, and a named-place search or a raw lat/lon is one tap away
+ * behind the search button rather than three permanent rows in the sheet.
  */
 export function LocationPicker({
   legend,
+  shortLabel,
   idPrefix,
   value,
   valueLabel,
@@ -52,6 +61,13 @@ export function LocationPicker({
   const [searchQuery, setSearchQuery] = useState('')
   const [isSearching, setIsSearching] = useState(false)
   const [isLocating, setIsLocating] = useState(false)
+  /**
+   * A point the map can pin and GPS can fill has quicker paths than typing, so
+   * its search starts folded. Where neither applies — the stop point, which the
+   * map does not set — searching *is* the way in, and folding it away would
+   * hide the only door.
+   */
+  const [isSearchOpen, setIsSearchOpen] = useState(!showCurrentLocation)
 
   function useCurrentLocation() {
     setIsLocating(true)
@@ -102,92 +118,125 @@ export function LocationPicker({
 
   return (
     <fieldset className="min-w-0">
-      <legend className={`mb-1.5 ${MICRO_LABEL_CLASS}`}>{legend}</legend>
+      <legend className="sr-only">{legend}</legend>
 
-      <p className="text-ink-2 mb-2 text-sm">{hint}</p>
+      <div className="flex items-center gap-2">
+        {/* The legend says this already; here it is only for the eye. */}
+        <span aria-hidden="true" className={MICRO_LABEL_CLASS}>
+          {shortLabel}
+        </span>
 
-      {value && (
-        <p className="text-ink mb-2 flex items-baseline gap-2 text-sm">
-          <span aria-hidden="true" className="text-moss">
-            ●
-          </span>
-          <span className={valueLabel ? '' : 'font-mono tabular-nums'}>
-            {valueLabel ?? formatCoordinates(value)}
-          </span>
-        </p>
-      )}
+        {value ? (
+          <p className="text-ink flex min-w-0 flex-1 items-baseline gap-1.5 text-sm">
+            <span aria-hidden="true" className="text-moss">
+              ●
+            </span>
+            <span
+              className={`truncate ${valueLabel ? '' : 'font-mono tabular-nums'}`}
+            >
+              {valueLabel ?? formatCoordinates(value)}
+            </span>
+          </p>
+        ) : (
+          <p className="text-ink-2 min-w-0 flex-1 truncate text-sm">{hint}</p>
+        )}
 
-      {showCurrentLocation && (
+        {showCurrentLocation && (
+          <button
+            type="button"
+            onClick={useCurrentLocation}
+            disabled={isLocating}
+            aria-label="Use my current location"
+            aria-busy={isLocating}
+            className={SECONDARY_ICON_BUTTON_CLASS}
+          >
+            <span aria-hidden="true">{isLocating ? '…' : '📍'}</span>
+          </button>
+        )}
+
         <button
           type="button"
-          onClick={useCurrentLocation}
-          disabled={isLocating}
-          className={`mb-2 w-full ${SECONDARY_BUTTON_CLASS}`}
+          onClick={() => setIsSearchOpen((open) => !open)}
+          // Named for both of the ways in it reveals, and named apart from the
+          // search field it uncovers so the two never answer the same query.
+          aria-label="Search or enter coordinates"
+          aria-expanded={isSearchOpen}
+          className={SECONDARY_ICON_BUTTON_CLASS}
         >
-          {isLocating ? 'Locating…' : 'Use my current location'}
-        </button>
-      )}
-
-      <div className="flex gap-2">
-        <label htmlFor={`${idPrefix}-search`} className="sr-only">
-          Search for a place
-        </label>
-        <input
-          id={`${idPrefix}-search`}
-          type="search"
-          placeholder="Search for a place"
-          value={searchQuery}
-          onChange={(event) => setSearchQuery(event.target.value)}
-          className={FIELD_CLASS}
-        />
-        <button
-          type="button"
-          onClick={() => void searchLocation()}
-          disabled={isSearching}
-          className={SECONDARY_BUTTON_CLASS}
-        >
-          {isSearching ? 'Searching…' : 'Search'}
+          <span aria-hidden="true">🔍</span>
         </button>
       </div>
 
-      <details className="mt-2">
-        <summary className="text-ink-3 cursor-pointer py-1 text-sm">
-          Enter coordinates
-        </summary>
-        <div className="mt-2 flex flex-wrap items-end gap-2">
-          <div className="min-w-24 flex-1">
-            <label htmlFor={`${idPrefix}-lat`} className={MICRO_LABEL_CLASS}>
-              Latitude
+      {isSearchOpen && (
+        <div className="mt-2">
+          <div className="flex gap-2">
+            <label htmlFor={`${idPrefix}-search`} className="sr-only">
+              Search for a place
             </label>
             <input
-              id={`${idPrefix}-lat`}
-              type="number"
-              value={manualLat}
-              onChange={(event) => setManualLat(event.target.value)}
-              className={`${FIELD_CLASS} font-mono tabular-nums`}
+              id={`${idPrefix}-search`}
+              type="search"
+              placeholder="Search for a place"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              className={FIELD_CLASS}
             />
+            <button
+              type="button"
+              onClick={() => void searchLocation()}
+              disabled={isSearching}
+              className={SECONDARY_BUTTON_CLASS}
+            >
+              {isSearching ? 'Searching…' : 'Search'}
+            </button>
           </div>
-          <div className="min-w-24 flex-1">
-            <label htmlFor={`${idPrefix}-lon`} className={MICRO_LABEL_CLASS}>
-              Longitude
-            </label>
-            <input
-              id={`${idPrefix}-lon`}
-              type="number"
-              value={manualLon}
-              onChange={(event) => setManualLon(event.target.value)}
-              className={`${FIELD_CLASS} font-mono tabular-nums`}
-            />
-          </div>
-          <button
-            type="button"
-            onClick={setPinManually}
-            className={SECONDARY_BUTTON_CLASS}
-          >
-            Use these coordinates
-          </button>
+
+          <details className="mt-2">
+            <summary className="text-ink-3 cursor-pointer py-1 text-sm">
+              Enter coordinates
+            </summary>
+            <div className="mt-2 flex flex-wrap items-end gap-2">
+              <div className="min-w-24 flex-1">
+                <label
+                  htmlFor={`${idPrefix}-lat`}
+                  className={MICRO_LABEL_CLASS}
+                >
+                  Latitude
+                </label>
+                <input
+                  id={`${idPrefix}-lat`}
+                  type="number"
+                  value={manualLat}
+                  onChange={(event) => setManualLat(event.target.value)}
+                  className={`${FIELD_CLASS} font-mono tabular-nums`}
+                />
+              </div>
+              <div className="min-w-24 flex-1">
+                <label
+                  htmlFor={`${idPrefix}-lon`}
+                  className={MICRO_LABEL_CLASS}
+                >
+                  Longitude
+                </label>
+                <input
+                  id={`${idPrefix}-lon`}
+                  type="number"
+                  value={manualLon}
+                  onChange={(event) => setManualLon(event.target.value)}
+                  className={`${FIELD_CLASS} font-mono tabular-nums`}
+                />
+              </div>
+              <button
+                type="button"
+                onClick={setPinManually}
+                className={SECONDARY_BUTTON_CLASS}
+              >
+                Use these coordinates
+              </button>
+            </div>
+          </details>
         </div>
-      </details>
+      )}
     </fieldset>
   )
 }
