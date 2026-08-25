@@ -1,7 +1,7 @@
 import 'leaflet/dist/leaflet.css'
 
 import L from 'leaflet'
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   CircleMarker,
   MapContainer,
@@ -11,6 +11,9 @@ import {
   useMap,
   useMapEvents,
 } from 'react-leaflet'
+
+import { MapLayerControl } from '#/components/MapLayerControl'
+import { BASE_LAYERS, BICYCLE_LAYER, type MapLayerId } from '#/lib/mapLayers'
 
 export type RoutePolyline = {
   /** Stable key, e.g. `candidate-0`. */
@@ -67,7 +70,7 @@ const DEFAULT_ZOOM = 14
 const LOCATE_ZOOM = 16
 
 const ACTIVE_PATH_OPTIONS = { weight: 6, opacity: 1 } as const
-const INACTIVE_PATH_OPTIONS = { weight: 3, opacity: 0.45 } as const
+const INACTIVE_PATH_OPTIONS = { weight: 4, opacity: 0.75 } as const
 
 /** Padding (px) kept around the fitted routes so polylines aren't flush to the edge. */
 const FIT_PADDING: [number, number] = [24, 24]
@@ -273,57 +276,71 @@ export function RouteMap({
     ...routes.filter((route) => !route.isActive),
     ...routes.filter((route) => route.isActive),
   ]
+  const [layer, setLayer] = useState<MapLayerId>('streets')
+  const [bikeLanes, setBikeLanes] = useState(false)
+  const base = BASE_LAYERS[layer]
 
   return (
-    <MapContainer
-      center={initialCenter(start, routes)}
-      zoom={DEFAULT_ZOOM}
-      // No zoom buttons: they land under the floating pill bar, and pinch,
-      // scroll and the keyboard +/- keys all still zoom.
-      zoomControl={false}
-      className={className}
-    >
-      <TileLayer
-        url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    <div className="relative h-full w-full">
+      <MapContainer
+        center={initialCenter(start, routes)}
+        zoom={DEFAULT_ZOOM}
+        // No zoom buttons: they land under the floating pill bar, and pinch,
+        // scroll and the keyboard +/- keys all still zoom.
+        zoomControl={false}
+        className={className}
+      >
+        <TileLayer url={base.url} attribution={base.attribution} />
+        {bikeLanes && (
+          <TileLayer
+            url={BICYCLE_LAYER.url}
+            attribution={BICYCLE_LAYER.attribution}
+          />
+        )}
+        <InvalidateSizeOnResize />
+        {onMapClick && <MapClickHandler onMapClick={onMapClick} />}
+        <FollowLivePosition livePosition={livePosition} follow={follow} />
+        {follow && onFollowCancel && (
+          <CancelFollowOnDrag onFollowCancel={onFollowCancel} />
+        )}
+        <JumpToPosition jumpTo={jumpTo} />
+        <FitRoutes routes={routes} follow={follow} />
+        {drawOrder.map((route) => (
+          <Polyline
+            key={route.id}
+            positions={route.coordinates}
+            pathOptions={{
+              color: route.color,
+              ...(route.isActive ? ACTIVE_PATH_OPTIONS : INACTIVE_PATH_OPTIONS),
+            }}
+          />
+        ))}
+        {start && (
+          <Marker
+            position={start}
+            icon={START_PIN_ICON}
+            // `alt` only reaches image icons; `title` names the div-based one.
+            title="Start point"
+          />
+        )}
+        {livePosition && (
+          <CircleMarker
+            center={livePosition}
+            radius={8}
+            pathOptions={{
+              color: '#1d4ed8',
+              fillColor: '#3b82f6',
+              fillOpacity: 1,
+            }}
+          />
+        )}
+      </MapContainer>
+      <MapLayerControl
+        layer={layer}
+        onLayerChange={setLayer}
+        bikeLanes={bikeLanes}
+        onToggleBikeLanes={() => setBikeLanes((current) => !current)}
       />
-      <InvalidateSizeOnResize />
-      {onMapClick && <MapClickHandler onMapClick={onMapClick} />}
-      <FollowLivePosition livePosition={livePosition} follow={follow} />
-      {follow && onFollowCancel && (
-        <CancelFollowOnDrag onFollowCancel={onFollowCancel} />
-      )}
-      <JumpToPosition jumpTo={jumpTo} />
-      <FitRoutes routes={routes} follow={follow} />
-      {drawOrder.map((route) => (
-        <Polyline
-          key={route.id}
-          positions={route.coordinates}
-          pathOptions={{
-            color: route.color,
-            ...(route.isActive ? ACTIVE_PATH_OPTIONS : INACTIVE_PATH_OPTIONS),
-          }}
-        />
-      ))}
-      {start && (
-        <Marker
-          position={start}
-          icon={START_PIN_ICON}
-          // `alt` only reaches image icons; `title` names the div-based one.
-          title="Start point"
-        />
-      )}
-      {livePosition && (
-        <CircleMarker
-          center={livePosition}
-          radius={8}
-          pathOptions={{
-            color: '#1d4ed8',
-            fillColor: '#3b82f6',
-            fillOpacity: 1,
-          }}
-        />
-      )}
-    </MapContainer>
+    </div>
   )
 }

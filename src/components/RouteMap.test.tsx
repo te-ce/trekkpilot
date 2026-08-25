@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 /** The Leaflet map handle the component drives imperatively. */
@@ -245,6 +245,54 @@ describe('RouteMap', () => {
     render(<RouteMap start={START} routes={[]} className="h-64" />)
 
     expect(screen.getByTestId('map-container')).toHaveClass('h-64')
+  })
+})
+
+describe('RouteMap base layer and bike lanes control', () => {
+  it('starts on the streets tile layer with no bike lanes overlay', () => {
+    render(<RouteMap start={START} routes={[]} />)
+
+    expect(screen.getAllByTestId('tile-layer')).toHaveLength(1)
+    expect(screen.getByTestId('tile-layer').getAttribute('data-url')).toContain(
+      'openstreetmap',
+    )
+    expect(screen.getByRole('button', { name: 'Streets' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+  })
+
+  it('switches the base tiles to satellite imagery on request', () => {
+    render(<RouteMap start={START} routes={[]} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Satellite' }))
+
+    const tileLayers = screen.getAllByTestId('tile-layer')
+    expect(tileLayers).toHaveLength(1)
+    expect(tileLayers[0]?.getAttribute('data-url')).toContain('arcgisonline')
+    expect(screen.getByRole('button', { name: 'Satellite' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+  })
+
+  it('adds a cycling-route overlay on top of the base layer when toggled on', () => {
+    render(<RouteMap start={START} routes={[]} />)
+
+    const bikeToggle = screen.getByRole('button', {
+      name: 'Show cycling routes',
+    })
+    expect(bikeToggle).toHaveAttribute('aria-pressed', 'false')
+
+    fireEvent.click(bikeToggle)
+
+    const tileLayers = screen.getAllByTestId('tile-layer')
+    expect(tileLayers).toHaveLength(2)
+    expect(tileLayers[1]?.getAttribute('data-url')).toContain('waymarkedtrails')
+    expect(bikeToggle).toHaveAttribute('aria-pressed', 'true')
+
+    fireEvent.click(bikeToggle)
+    expect(screen.getAllByTestId('tile-layer')).toHaveLength(1)
   })
 })
 
