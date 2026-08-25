@@ -29,11 +29,9 @@ test.describe('my position on the map', () => {
   test('centres on the current position without needing a route', async ({
     page,
   }) => {
+    // Permission is already granted above, so arriving is enough: the page
+    // centres itself on the user without any tap and without a route.
     await page.goto('/')
-
-    await page
-      .getByRole('button', { name: /centre the map on my location/i })
-      .click()
 
     // The dot is a Leaflet circle marker: an SVG path in the overlay pane.
     await expect(

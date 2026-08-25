@@ -16,10 +16,15 @@ test.use({
   permissions: ['geolocation'],
 })
 
-/** The three loops the fixture server's scores leave standing, best first. */
+/**
+ * The fixture pool, by the part each loop plays. The server scores and sorts
+ * all five and hands the whole pool over; the sheet reveals the best three,
+ * and the ranking control re-ranks the pool, so a loop below the fold can
+ * still come first under another ranking.
+ */
 const bestLoop = specNamed(loopCandidateSpecs, 'easy river loop')
 const pathHeavyLoop = specNamed(loopCandidateSpecs, 'hilly park loop')
-const flattestSurvivingLoop = specNamed(loopCandidateSpecs, 'twisty canal loop')
+const flattestLoop = specNamed(loopCandidateSpecs, 'short flat loop')
 const roadworksLoop = specNamed(loopCandidateSpecs, 'roadworks loop')
 
 /** Reveals the free-form minutes field, which the duration presets fold away. */
@@ -40,8 +45,9 @@ test('a loop search offers three candidates with distance and time @smoke', asyn
 }) => {
   await searchLoopsFromCurrentPosition(page)
 
+  // Three of the five the fixture server scored: the rest are one tap away.
   await expect(
-    page.getByRole('heading', { name: '3 loops from here' }),
+    page.getByRole('heading', { name: 'Showing 3 of 5 loops from here' }),
   ).toBeVisible()
 
   const rows = page.getByTestId('candidate-row')
@@ -118,10 +124,11 @@ test('ranking by flattest reorders the same three candidates @smoke', async ({
 
   await page.getByLabel('Rank by').selectOption('flat')
 
-  // The least climbing of the three moves to the top; nothing is refetched.
-  await expect(rows.nth(0)).toContainText('12.3 km')
+  // The least climbing of the whole pool moves to the top — including a loop
+  // the balanced ranking kept below the fold. Nothing is refetched.
+  await expect(rows.nth(0)).toContainText('9.8 km')
   await expect(rows).toHaveCount(3)
-  expect(flattestSurvivingLoop.ascentMeters).toBeLessThan(bestLoop.ascentMeters)
+  expect(flattestLoop.ascentMeters).toBeLessThan(bestLoop.ascentMeters)
 
   await page.getByLabel('Rank by').selectOption('paths')
 

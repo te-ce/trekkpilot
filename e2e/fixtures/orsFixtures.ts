@@ -108,8 +108,9 @@ const BASE_ELEVATION_METERS = 34
  * | 4 |    100 |    12 |  50% |       30% | −16.0 |
  * | 5 |     60 |     6 |  70% |        0% |  29.0 |
  *
- * So the server keeps #5, #2, #1 in that order; the roadworks-heavy #4 is
- * cut, and ranking by "flattest" client-side puts #1 first.
+ * So the server hands the pool over as #5, #2, #1, #3, #4; the sheet reveals
+ * the best three, leaving #3 and the roadworks-heavy #4 below the fold, and
+ * ranking by "flattest" client-side puts #3 first.
  */
 export const loopCandidateSpecs: RouteSpec[] = [
   {
