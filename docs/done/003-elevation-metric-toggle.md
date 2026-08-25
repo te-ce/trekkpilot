@@ -4,17 +4,22 @@
 
 ## What to build
 
-Let the user choose which elevation metric drives scoring and display: total ascent (sum of uphill meters), net elevation change (start vs end — near-zero for loops), or max gradient (steepest single climb). Default to total ascent.
+Let the user select which elevation metric drives the scoring and the display.
+There are three metrics: total ascent (the sum of the uphill meters), net
+elevation change (start against end, which is almost zero for loops), and max
+gradient (the steepest single climb). The default is total ascent.
 
-The chosen metric feeds into the weighted-sum scoring formula from 002 in place of the hardcoded total-ascent term, and the per-candidate display shows the selected metric's value instead of (or alongside) total ascent.
+The selected metric goes into the weighted-sum formula from 002, in place of the
+hardcoded total-ascent term. The display for each candidate shows the value of
+the selected metric in place of total ascent, or with it.
 
 ## Acceptance criteria
 
-- [ ] UI control lets user pick ascent / net-change / max-gradient
-- [ ] Scoring formula uses the selected metric for the elevation term
-- [ ] Candidate list display reflects the selected metric's value
-- [ ] Default remains total ascent when user hasn't changed it
+- [ ] A UI control lets the user select ascent, net change, or max gradient.
+- [ ] The scoring formula uses the selected metric for the elevation term.
+- [ ] The candidate list shows the value of the selected metric.
+- [ ] The default stays total ascent until the user changes it.
 
 ## Blocked by
 
-- 002 - Score & rank into top 3 candidates
+- 002 - Score and rank into top 3 candidates

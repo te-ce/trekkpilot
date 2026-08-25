@@ -4,15 +4,25 @@
 
 ## What to build
 
-Persist generated/selected routes to the browser's `localStorage` (device-local, no backend or account needed — matches the app's stateless-backend approach). Add a simple history view listing past routes (activity, duration, date, score summary) that the user can reopen to view again, re-export, or re-run.
+Keep the generated and selected routes in the `localStorage` of the browser. The
+data stays on the device, and needs no backend and no account. This matches the
+stateless-backend approach of the app.
+
+Add a simple history view. This view lists the past routes with activity,
+duration, date, and score summary. The user can open a route again to look at
+it, to export it again, or to search for it again.
 
 ## Acceptance criteria
 
-- [ ] Selecting or exporting a route saves a record of it to localStorage
-- [ ] History view lists saved routes with enough summary info to recognize them (activity, duration, date, score)
-- [ ] User can reopen a saved route to view it on the map and re-export it
-- [ ] History is device-local only — no sync, no account, no backend storage
+- [ ] When the user selects or exports a route, the app saves a record of it to
+      localStorage.
+- [ ] The history view lists the saved routes with enough summary data for the
+      user to recognize them: activity, duration, date, and score.
+- [ ] The user can open a saved route again, look at it on the map, and export
+      it again.
+- [ ] The history stays on the device. There is no sync, no account, and no
+      backend storage.
 
 ## Blocked by
 
-- 002 - Score & rank into top 3 candidates
+- 002 - Score and rank into top 3 candidates

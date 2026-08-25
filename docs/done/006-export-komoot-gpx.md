@@ -4,14 +4,23 @@
 
 ## What to build
 
-For a selected route (from 002), generate a GPX file reproducing its exact geometry and let the user download/open it for import into Komoot. This is the "exact route" export path — Komoot supports full GPX import, so the shaped route (including all scoring-relevant path choices) carries over faithfully, unlike a Google Maps deep link.
+For a selected route (from 002), generate a GPX file that reproduces the exact
+geometry of the route. The user can then download the file or open it for import
+into Komoot.
+
+This is the export path for the exact route. Komoot supports full GPX import.
+Thus the shaped route, with all the path choices that the score is made of,
+carries over faithfully. A Google Maps deep link does not do this.
 
 ## Acceptance criteria
 
-- [ ] Selected route can be exported as a valid GPX file matching its computed geometry exactly
-- [ ] User can download the file or trigger a share/open action that hands it to Komoot (or any GPX-compatible app)
-- [ ] Exported GPX includes waypoints/track matching what was scored and displayed, not a simplified approximation
+- [ ] The app can export the selected route as a valid GPX file that matches the
+      computed geometry exactly.
+- [ ] The user can download the file, or start a share action that gives the
+      file to Komoot or to any GPX-compatible app.
+- [ ] The GPX file holds the waypoints and the track that were scored and shown,
+      and not a simplified approximation.
 
 ## Blocked by
 
-- 002 - Score & rank into top 3 candidates
+- 002 - Score and rank into top 3 candidates

@@ -1,13 +1,13 @@
 # TrekkPilot
 
-Route planning for cycling and trekking that starts from the time you have,
-not the place you're going. Tell it you've got an hour, and it finds three
-loops from where you're standing, scores them on climbing, turns and how much
-of the way runs on dedicated bike paths, and hands you the one you pick as a
-GPX file or a Google Maps link.
+TrekkPilot plans cycling and trekking routes from the time that you have, not
+from the place that you go to. You tell it that you have one hour. It finds
+three loops from your position, and scores them on ascent, turns, and the share
+of the route on dedicated bike paths. Then it gives you the loop that you select
+as a GPX file or as a Google Maps link.
 
-Point-to-point works too: name a start and a destination and it ranks three
-ways to get there.
+Point-to-point mode also works. You name a start and a destination, and
+TrekkPilot ranks three ways to get there.
 
 <p>
   <img src="docs/screenshots/01-home.png" width="260" alt="Plan-a-loop sheet over the map, set to 1 hour of cycling">
@@ -17,28 +17,30 @@ ways to get there.
 
 ## What it does
 
-- **Loop routes from a time budget.** Duration and activity convert to a target
-  distance (15 km/h cycling, 4.5 km/h trekking), which drives OpenRouteService's
-  `round_trip` mode.
-- **Three candidates, ranked.** Five seeded round-trip calls per search; the
-  best three come back scored on total ascent, turn count, share of the route on
-  cycleway/footway, and a construction penalty.
-- **Re-rank without refetching.** Every metric ships with every candidate, so
-  changing what you're optimising for (flattest, gentlest climbs, most bike
-  path, fewest turns) reorders the three instantly, client-side.
+- **Loop routes from a time budget.** The duration and the activity give a
+  target distance (15 km/h for cycling, 4.5 km/h for trekking). This distance
+  drives the `round_trip` mode of OpenRouteService.
+- **Three ranked candidates.** Each search makes five seeded round-trip calls.
+  The best three come back with a score. The score uses total ascent, turn
+  count, the share of the route on cycleway or footway, and a construction
+  penalty.
+- **Re-rank without a new request.** Every candidate carries every metric. When
+  you change the target (flattest, gentlest climbs, most bike path, fewest
+  turns), the client puts the three in a new order immediately.
 - **Point-to-point alternatives** between two named or searched locations.
-- **Live position** on the active route while the app is in the foreground, with
-  a follow toggle. No background tracking.
-- **Exports.** GPX reproduces the scored geometry exactly, for Komoot or any
-  GPX-compatible app. The Google Maps link is an approximation — Google
-  recalculates directions through at most nine waypoints.
-- **History** in `localStorage`. Device-local, no account, no backend storage.
+- **Live position** on the active route while the app is in the foreground. A
+  toggle controls the follow mode. There is no background tracking.
+- **Exports.** The GPX file reproduces the scored geometry exactly, for Komoot
+  or any GPX-compatible app. The Google Maps link is an approximation, because
+  Google calculates the directions again through nine waypoints or fewer.
+- **History** in `localStorage`. The data stays on the device. There is no
+  account and no backend storage.
 
 ## How it works
 
-A TanStack Start app. The OpenRouteService API key lives only in server
-functions and never reaches the browser — `pnpm build` output is grepped for it
-as part of the checks below.
+TrekkPilot is a TanStack Start app. The OpenRouteService API key stays in the
+server functions and never gets to the browser. The checks that follow grep the
+`pnpm build` output for this key.
 
 ```
 src/
@@ -50,69 +52,77 @@ src/
     functions/          server-function boundary (the API key stops here)
 ```
 
-The UI is map-first and built mobile-first: a full-bleed map with a floating
-pill bar and a bottom sheet, which becomes a floating card from `md` up. Sheet
-state is derived from intent plus data rather than stored, so it can't sit on an
-empty view.
+The UI is map-first and mobile-first. A full-bleed map holds a floating pill bar
+and a bottom sheet. From the `md` breakpoint up, the sheet becomes a floating
+card. The state of the sheet comes from intent plus data, and the app does not
+store it. Thus the sheet cannot stay on an empty view.
 
-Scoring is a single weighted sum (`src/server/scoring.ts`), tuned to favour
-flatter, less turn-heavy, path-dedicated routes:
+Scoring is one weighted sum in `src/server/scoring.ts`. The weights favor
+flatter routes with fewer turns and more dedicated paths.
 
 | Term                         | Weight |
 | ---------------------------- | ------ |
-| Ascent (per metre)           | −0.05  |
-| Turns (per manoeuvre)        | −0.5   |
+| Ascent (for each meter)      | −0.05  |
+| Turns (for each maneuver)    | −0.5   |
 | Cycleway/footway ratio (0–1) | +50    |
 | Construction ratio (0–1)     | −100   |
 
-The elevation term can follow total ascent, net elevation change, or max
-gradient. The server uses it to pick the top three; the client re-ranks those
-three.
+The elevation term can use total ascent, net elevation change, or max gradient.
+The server uses this term to select the top three. The client then ranks these
+three again.
 
 ## Setup
 
-Node 24 and pnpm (developed against pnpm 11; CI runs Node 24).
+You need Node 24 and pnpm. Development used pnpm 11, and CI uses Node 24.
+
+Install the dependencies:
 
 ```bash
 pnpm install
 ```
 
-You need an OpenRouteService API key — the free tier is enough. Create an
-account from the [ORS developer login](https://openrouteservice.org/dev/#/login),
-then generate a token on the [dashboard](https://openrouteservice.org/dev/#/home)
-(ORS accounts are managed through HeiGIT Account, so the login may hand you off
-to `account.heigit.org`). Put the token in a `.env` file in the repo root:
+You also need an OpenRouteService API key. The free tier is sufficient.
+
+1. Create an account from the
+   [ORS developer login](https://openrouteservice.org/dev/#/login).
+2. Generate a token on the
+   [dashboard](https://openrouteservice.org/dev/#/home).
+3. Put the token in a `.env` file in the root of the repository.
+
+Note: ORS accounts use HeiGIT Account. Thus the login can send you to
+`account.heigit.org`.
 
 ```bash
 echo 'ORS_API_KEY=your-key-here' > .env
 ```
 
-`.env` is gitignored, and the key is read server-side only. An environment
-variable works just as well if you'd rather not keep a file:
+Git ignores `.env`, and only the server reads the key. An environment variable
+does the same job if you do not want a file:
 
 ```bash
 ORS_API_KEY=your-key-here pnpm dev
 ```
 
-Then:
+Then start the dev server:
 
 ```bash
 pnpm dev          # http://localhost:3000
 ```
 
-Without a key the app loads and the map renders, but any search fails — the
+Without a key, the app loads and the map shows, but every search fails. The
 server function throws `ORS_API_KEY is not configured on the server`.
 
-`ORS_BASE_URL` optionally overrides where those requests go. It defaults to
-`https://api.openrouteservice.org`, so production needs no setting; it exists so
-a test run can point the app at a fixture ORS server (`e2e/fixtures/`) and drive
-the whole journey without a key, without network access, and without spending
-free-tier quota. Like the API key, it is read server-side only. The Playwright
-suite sets it for you — see _Testing and quality gates_.
+`ORS_BASE_URL` sends these requests to a different host. The default is
+`https://api.openrouteservice.org`, thus production needs no value. This
+variable lets a test point the app at a fixture ORS server (`e2e/fixtures/`) and
+do the full journey. Such a test needs no key, no network access, and no
+free-tier quota. Only the server reads this variable, as it reads the API key.
+The Playwright suite sets it for you. For more data, read _Testing and quality
+gates_.
 
-The free tier is rate-limited, and each loop search spends **five** directions
-requests (one per seed), plus one geocoding request per location you search by
-name.
+The free tier has a rate limit. Each loop search spends **five** directions
+requests, one for each seed. Each location that you search by name spends one
+more geocoding request.
 
 ## Scripts
 
@@ -122,65 +132,69 @@ name.
 | `pnpm build`           | Production build                            |
 | `pnpm preview`         | Serve the production build                  |
 | `pnpm test`            | Vitest in watch mode                        |
-| `pnpm test:run`        | Vitest once                                 |
+| `pnpm test:run`        | Vitest one time                             |
 | `pnpm coverage`        | Vitest with coverage                        |
 | `pnpm e2e`             | Playwright against a preview build          |
-| `pnpm e2e:smoke`       | The `@smoke`-tagged Playwright subset       |
+| `pnpm e2e:smoke`       | The `@smoke` subset of the Playwright tests |
 | `pnpm typecheck`       | `tsc -b`                                    |
 | `pnpm lint`            | oxlint, type-aware                          |
 | `pnpm lint:fix`        | oxlint with `--fix`                         |
-| `pnpm format`          | Prettier over the repo                      |
+| `pnpm format`          | Prettier over the repository                |
 | `pnpm knip`            | Find unused files, exports and dependencies |
-| `pnpm generate-routes` | Regenerate `src/routeTree.gen.ts`           |
+| `pnpm generate-routes` | Generate `src/routeTree.gen.ts` again       |
 
-Add route files under `src/routes` — TanStack Router regenerates
-`src/routeTree.gen.ts` for you. `#/*` imports map to `./src/*`.
+Add route files to `src/routes`. TanStack Router then generates
+`src/routeTree.gen.ts` for you. The `#/*` imports map to `./src/*`.
 
 ## Testing and quality gates
 
-The suite is unit and integration tests in Vitest with Testing Library, plus a
-Playwright suite that runs against a real production preview build. In Vitest,
-ORS is mocked at the `fetch` boundary; scoring, ranking, GPX and history are
-covered as pure functions.
+The suite has unit and integration tests in Vitest with Testing Library. A
+Playwright suite runs against a real production preview build. In Vitest, a mock
+replaces ORS at the `fetch` boundary. The tests cover scoring, ranking, GPX, and
+history as pure functions.
 
-End to end, ORS is stood in for by a local fixture server (`e2e/fixtures/`), a
-dependency-free `node:http` server started for the run in `e2e/global-setup.ts`
-and reached because `playwright.config.ts` sets `ORS_BASE_URL` (and a dummy
-`ORS_API_KEY`) for the preview server. The fixtures reproduce real ORS GeoJSON
-field for field — `[lon, lat, elevation]` coordinate triples, `summary`,
-`segments[].steps[]`, and `extras.waytype.summary[]` with ORS's numeric waytype
-codes — and the five loop candidates differ enough in ascent, turns and waytype
-mix that the top-three cut and the ranking control both have real work to do. So
-`pnpm e2e` covers searching, re-ranking, selecting, GPX export, the Google Maps
-link, history and the point-to-point flow with no key, no network and no quota
-spent. `pnpm e2e:smoke` runs the `@smoke`-tagged subset.
+End to end, a local fixture server (`e2e/fixtures/`) replaces ORS. This server
+uses `node:http` only and has no dependencies. `e2e/global-setup.ts` starts it
+for the run. The tests get to it because `playwright.config.ts` sets
+`ORS_BASE_URL` and a dummy `ORS_API_KEY` for the preview server.
 
-A husky pre-commit hook runs lint-staged, `tsc -b` and the full Vitest suite, so
-a commit can't land red. CI additionally runs coverage, `knip`, and the
-Playwright job.
+The fixtures reproduce real ORS GeoJSON field for field: `[lon, lat, elevation]`
+coordinate triples, `summary`, `segments[].steps[]`, and
+`extras.waytype.summary[]` with the numeric waytype codes of ORS. The five loop
+candidates differ enough in ascent, turns, and waytype mix that the top-three
+cut and the ranking control both do real work. As a result, `pnpm e2e` covers
+the search, the re-ranking, the selection, the GPX export, the Google Maps link,
+the history, and the point-to-point flow. It spends no key, no network access,
+and no quota. `pnpm e2e:smoke` runs the `@smoke` subset.
+
+A husky pre-commit hook runs lint-staged, `tsc -b`, and the full Vitest suite.
+Thus a commit cannot land red. CI also runs coverage, `knip`, and the Playwright
+job.
 
 ## Known limitations
 
-- **Some ORS response details are believed, not verified.** Searching works
-  against a live key, but a few specifics have only ever been exercised against
-  our own fixtures, which were written to match what the code reads — so they
-  encode the current belief rather than proving it: the numeric `waytype` codes
-  behind the path-type ratio and the construction penalty (the API exposes no
-  dedicated `construction=*` bucket, so one code is reused for both), the
-  response carrying `properties.extras` rather than `extra_info`, the `api_key`
-  query parameter on `/geocode/search`, and the `share_factor`/`weight_factor`
-  values for `alternative_routes`. Missing or misread data degrades one scoring
-  signal rather than crashing a search, which is why a wrong guess here shows up
-  as a metric that is always 0% rather than as an error.
-- **Net elevation change is near zero for loops** by definition — it's most
-  useful in point-to-point mode.
-- **Point-to-point ignores the time budget.** It ranks three ways to a
-  destination; it doesn't box them by duration.
-- **Return trips are out of scope.** Only the outbound leg is routed.
-- The OSM attribution can sit behind the bottom sheet on a phone, and the
-  sheet's drag handle is an affordance without a drag gesture behind it yet.
+- **Some ORS response details are a belief, not a proven fact.** Search works
+  against a live key, but a few specifics have only run against our own
+  fixtures. We wrote those fixtures to match what the code reads. Thus they
+  record the current belief and do not prove it. These specifics are the numeric
+  `waytype` codes behind the path-type ratio and the construction penalty, the
+  response that carries `properties.extras` and not `extra_info`, the `api_key`
+  query parameter on `/geocode/search`, and the `share_factor` and
+  `weight_factor` values for `alternative_routes`.
+- **A wrong belief degrades a metric, it does not break a search.** The API
+  gives no dedicated `construction=*` bucket, thus the code uses one waytype
+  code for both signals. Missing or misread data makes one scoring signal worse,
+  but it does not stop a search. Thus a wrong guess shows a metric that is
+  always 0%, and not an error.
+- **Net elevation change is almost zero for loops**, by definition. This metric
+  is most useful in point-to-point mode.
+- **Point-to-point mode ignores the time budget.** It ranks three ways to a
+  destination, and it does not limit them by duration.
+- **Return trips are out of scope.** The app routes the outbound leg only.
+- The OSM attribution can go behind the bottom sheet on a phone. The drag handle
+  of the sheet looks like a control, but it has no drag gesture yet.
 
 ## Docs
 
-`docs/done/` holds the specs the app was built from, one file per shipped slice,
-in implementation order.
+`docs/done/` holds the specs that the app was built from. There is one file for
+each shipped slice, in implementation order.

@@ -4,13 +4,23 @@
 
 ## What to build
 
-Once a route is selected (from 001/002), show the user's live position on the map against that route using the browser's foreground Geolocation API. No background tracking, no voice guidance, no rerouting — just a live dot on the map while the app is open and in the foreground. This is a lightweight "am I still on track" glance, not a replacement for real navigation (that's Komoot/Google Maps export, see 006/007).
+After the user selects a route (from 001 and 002), show the live position of the
+user on the map against that route. Use the Geolocation API of the browser in
+the foreground. There is no background tracking, no voice guidance, and no
+rerouting. There is a live dot on the map while the app is open and in the
+foreground.
+
+This is a light "am I still on track" glance. It does not replace real
+navigation, which is the export to Komoot or Google Maps (see 006 and 007).
 
 ## Acceptance criteria
 
-- [ ] While a route is active and the app is in the foreground, user's live position renders on the map
-- [ ] Position updates as the user moves (reasonable polling/update interval, no need for high-frequency tracking)
-- [ ] No background tracking, no crash/battery drain when app is backgrounded (tracking simply pauses)
+- [ ] While a route is active and the app is in the foreground, the map shows
+      the live position of the user.
+- [ ] The position updates as the user moves. A sensible update interval is
+      sufficient, and high-frequency tracking is not necessary.
+- [ ] There is no background tracking. The app does not crash and does not drain
+      the battery in the background, because tracking stops there.
 
 ## Blocked by
 

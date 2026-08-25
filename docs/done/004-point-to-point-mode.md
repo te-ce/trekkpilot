@@ -4,19 +4,30 @@
 
 ## What to build
 
-ORS's `round_trip` mode (used in 001/002) only produces loops back to the start point. Point-to-point routing needs a different call: the user always names a specific destination (e.g. "home → train station, best of 3 ways, ~30min"). This is a duration-boxed alternates problem, not endpoint-discovery — use ORS's directions/alternative-routes call between the two known points instead of `round_trip`.
+The `round_trip` mode of ORS, used in 001 and 002, makes loops back to the start
+point only. Point-to-point routing needs a different call, because the user
+always names a specific destination (for example, "home to train station, best
+of 3 ways, approximately 30 min"). This is a problem of duration-boxed
+alternates, and not of endpoint discovery. Thus use the call for directions with
+alternative routes between the two known points, and not `round_trip`.
 
-Score each alternative with the same weighted-sum formula from 002/003 (ascent per chosen elevation metric, turn count, path-type ratio, construction-tag penalty) and return the top 3, same as loop mode. Return trip stays explicitly out of scope — the app only routes the outbound leg.
+Score each alternative with the same weighted-sum formula from 002 and 003:
+ascent for the selected elevation metric, turn count, path-type ratio, and
+construction-tag penalty. Return the top three, as loop mode does. The return
+trip stays out of scope, because the app routes the outbound leg only.
 
 ## Acceptance criteria
 
-- [ ] User can set a stop point different from the start point (both as named/searched locations, not just current-GPS)
-- [ ] Backend requests alternative routes between the two points from ORS
-- [ ] Each alternative is scored using the same formula as loop mode (002/003)
-- [ ] Top 3 scored alternatives are returned and displayed the same way as loop candidates
-- [ ] Return-trip is explicitly out of scope — app only routes the outbound leg
+- [ ] The user can set a stop point that is different from the start point. Both
+      points can be named or searched locations, and not the current GPS
+      position only.
+- [ ] The backend requests alternative routes between the two points from ORS.
+- [ ] The same formula as loop mode (002 and 003) scores each alternative.
+- [ ] The top three scored alternatives come back, and the display is the same
+      as for loop candidates.
+- [ ] The return trip is out of scope. The app routes the outbound leg only.
 
 ## Blocked by
 
 - 001 - Walking skeleton: single loop route end-to-end
-- 002 - Score & rank into top 3 candidates
+- 002 - Score and rank into top 3 candidates
