@@ -10,8 +10,8 @@ import type { RouteMode } from '#/lib/routeMode'
 
 /**
  * The floating bar over the map: what was asked for, where it starts, and the
- * controls that belong to the map rather than the sheet (centre-on-me, follow
- * and history). Safe-area aware, because on a phone this sits under the notch.
+ * controls that belong to the map rather than the sheet (follow and history).
+ * Safe-area aware, because on a phone this sits under the notch.
  */
 export function TopPillBar({
   mode,
@@ -21,7 +21,6 @@ export function TopPillBar({
   startLabel,
   follow,
   onToggleFollow,
-  onLocateMe,
   onEditPlan,
   onEditStart,
   onOpenHistory,
@@ -33,7 +32,6 @@ export function TopPillBar({
   startLabel: string | null
   follow: boolean
   onToggleFollow: () => void
-  onLocateMe: () => void
   onEditPlan: () => void
   onEditStart: () => void
   onOpenHistory: () => void
@@ -73,20 +71,6 @@ export function TopPillBar({
       </div>
 
       <div className="pointer-events-auto flex gap-2">
-        {/*
-          Two separate controls, because they are two separate wishes: "show me
-          where I am, once" and "keep the map on me". Merging them would make
-          one tap either fail to lock or lock when the user only wanted a look.
-        */}
-        <button
-          type="button"
-          aria-label="Centre the map on my location"
-          title="Centre the map on my location"
-          onClick={onLocateMe}
-          className={ICON_BUTTON_CLASS}
-        >
-          <span aria-hidden="true">⌖</span>
-        </button>
         <button
           type="button"
           aria-label="Follow my position"

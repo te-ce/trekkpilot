@@ -251,6 +251,10 @@ export function Home() {
         logGeolocationError('getCurrentPosition', error)
         setError(describeGeolocationError(error))
       },
+      // A one-shot "centre on me": a fast, roughly-fresh fix is fine, but it
+      // must still give up rather than hang forever (browser default timeout
+      // is Infinity).
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 },
     )
   }
 
@@ -438,7 +442,6 @@ export function Home() {
         startLabel={startLabel}
         follow={follow}
         onToggleFollow={() => setFollow((current) => !current)}
-        onLocateMe={locateMe}
         onEditPlan={() => showSheet('plan')}
         onEditStart={() => showSheet('plan')}
         onOpenHistory={openHistory}

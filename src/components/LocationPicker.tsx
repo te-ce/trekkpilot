@@ -51,19 +51,27 @@ export function LocationPicker({
   const [manualLon, setManualLon] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
   const [isSearching, setIsSearching] = useState(false)
+  const [isLocating, setIsLocating] = useState(false)
 
   function useCurrentLocation() {
+    setIsLocating(true)
     navigator.geolocation.getCurrentPosition(
       (position) => {
+        setIsLocating(false)
         onChange({
           lat: position.coords.latitude,
           lon: position.coords.longitude,
         })
       },
       (error) => {
+        setIsLocating(false)
         logGeolocationError('getCurrentPosition', error)
         onError(describeGeolocationError(error))
       },
+      // A one-shot fix for a button tap: worth waiting a bit longer and
+      // asking for the best accuracy available, but it must still give up
+      // rather than hang forever (browser default timeout is Infinity).
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 },
     )
   }
 
@@ -113,9 +121,10 @@ export function LocationPicker({
         <button
           type="button"
           onClick={useCurrentLocation}
+          disabled={isLocating}
           className={`mb-2 w-full ${SECONDARY_BUTTON_CLASS}`}
         >
-          Use my current location
+          {isLocating ? 'Locating…' : 'Use my current location'}
         </button>
       )}
 

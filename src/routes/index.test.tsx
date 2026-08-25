@@ -897,76 +897,8 @@ describe('Home', () => {
     expect(getCurrentPosition).not.toHaveBeenCalled()
   })
 
-  it('centres the map on the current position on demand, with no route and no start point', async () => {
-    stubGeolocationAt(48.2082, 16.3738)
-
-    render(<Home />)
-    expect(screen.getByTestId('route-map')).toHaveAttribute(
-      'data-jump-to',
-      'null',
-    )
-
-    fireEvent.click(
-      screen.getByRole('button', { name: /centre the map on my location/i }),
-    )
-
-    await waitFor(() =>
-      expect(
-        JSON.parse(
-          screen.getByTestId('route-map').getAttribute('data-jump-to') ??
-            'null',
-        ),
-      ).toMatchObject({ position: [48.2082, 16.3738] }),
-    )
-    // Centring must not silently adopt the position as the start point.
-    expect(screen.getByTestId('route-map')).toHaveAttribute(
-      'data-start',
-      'null',
-    )
-  })
-
-  it('asks again on a second tap, so it still recentres after a pan', async () => {
-    stubGeolocationAt(48.2082, 16.3738)
-
-    render(<Home />)
-    const centre = screen.getByRole('button', {
-      name: /centre the map on my location/i,
-    })
-    fireEvent.click(centre)
-    await waitFor(() =>
-      expect(screen.getByTestId('route-map')).not.toHaveAttribute(
-        'data-jump-to',
-        'null',
-      ),
-    )
-    const first = screen.getByTestId('route-map').getAttribute('data-jump-to')
-
-    fireEvent.click(centre)
-
-    await waitFor(() =>
-      expect(
-        screen.getByTestId('route-map').getAttribute('data-jump-to'),
-      ).not.toBe(first),
-    )
-  })
-
-  it('shows the live position dot once the map has been centred on it', async () => {
-    stubGeolocationAt(48.2082, 16.3738)
-
-    render(<Home />)
-    fireEvent.click(
-      screen.getByRole('button', { name: /centre the map on my location/i }),
-    )
-
-    await waitFor(() =>
-      expect(screen.getByTestId('route-map')).toHaveAttribute(
-        'data-live-position',
-        JSON.stringify([48.2082, 16.3738]),
-      ),
-    )
-  })
-
-  it('reports a refused or unavailable position instead of doing nothing', () => {
+  it('reports a refused or unavailable position instead of doing nothing', async () => {
+    stubPermissionState('granted')
     Object.defineProperty(globalThis.navigator, 'geolocation', {
       value: {
         getCurrentPosition: vi.fn(
@@ -981,11 +913,10 @@ describe('Home', () => {
     })
 
     render(<Home />)
-    fireEvent.click(
-      screen.getByRole('button', { name: /centre the map on my location/i }),
-    )
 
-    expect(screen.getByRole('alert')).toHaveTextContent(/location/i)
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent(/location/i),
+    )
     expect(screen.getByTestId('route-map')).toHaveAttribute(
       'data-jump-to',
       'null',

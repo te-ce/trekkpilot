@@ -43,6 +43,10 @@ export function useLiveGeolocation(active: boolean): LiveGeolocation {
           logGeolocationError('watchPosition', geoError)
           setError(describeGeolocationError(geoError))
         },
+        // A continuous tracker: each fix should stay fresh and accurate, but
+        // a stalled underlying request must still time out and retry rather
+        // than leave the watch silently stuck (browser default is Infinity).
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 },
       )
     }
 
